@@ -1,0 +1,20 @@
+# Python Backend Requirements
+# Install with: pip install -r requirements.txt
+
+# Core Framework
+fastapi==0.109.0
+uvicorn[standard]==0.27.0
+pydantic==2.5.3
+
+# Database (choose one or both)
+sqlalchemy==2.0.25        # ORM for database
+# pymysql==1.1.0          # For MySQL (uncomment if using MySQL)
+# psycopg2-binary==2.9.9  # For PostgreSQL (uncomment if using PostgreSQL)
+
+# Authentication & Security
+python-jose[cryptography]==3.3.0  # For JWT tokens
+passlib[bcrypt]==1.7.4            # For password hashing
+python-multipart==0.0.6           # For form data
+
+# Utilities
+python-dotenv==1.0.0      # For environment variables

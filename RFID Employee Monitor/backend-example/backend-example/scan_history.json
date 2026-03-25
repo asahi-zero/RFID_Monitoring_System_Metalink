@@ -1,0 +1,26 @@
+[
+  {
+    "id": "EMP001",
+    "name": "weatr",
+    "department": "Cutting",
+    "status": "Off Duty",
+    "area": "Area C",
+    "date": "2026-03-25",
+    "timeIn": "10:22:30",
+    "timeOut": "10:22:55",
+    "totalWorkHours": "0h 0m",
+    "image": "/snapshots/weatr_20260325_102232.jpg"
+  },
+  {
+    "id": "EMP001",
+    "name": "weatr",
+    "department": "Cutting",
+    "status": "On Duty",
+    "area": "Area C",
+    "date": "2026-03-25",
+    "timeIn": "10:23:01",
+    "timeOut": null,
+    "totalWorkHours": null,
+    "image": "/snapshots/weatr_20260325_102302.jpg"
+  }
+]
