@@ -12,15 +12,15 @@
   --primary-foreground: #ffffff;
   --secondary: #0099DD;
   --secondary-foreground: #ffffff;
-  --muted: #ececf0;
-  --muted-foreground: #717182;
+  --muted: #eef2f9;
+  --muted-foreground: #5c6280;
   --accent: #0099DD;
   --accent-foreground: #ffffff;
   --destructive: #d4183d;
   --destructive-foreground: #ffffff;
   --border: rgba(0, 0, 0, 0.1);
   --input: transparent;
-  --input-background: #f3f3f5;
+  --input-background: #f4f7fc;
   --switch-background: #cbced4;
   --font-weight-medium: 500;
   --font-weight-normal: 400;

@@ -84,18 +84,18 @@ def add_employee(name: str, department: str, rfid_uid: str) -> dict:
     return employee
 
 
-def delete_employee(emp_id: str) -> bool:
+def delete_employee(emp_id: str) -> dict | None:
     employees = _load()
     target = next((e for e in employees if e["id"] == emp_id), None)
     if not target:
-        return False
+        return None
 
     # ✅ Add to reserved list and persist so the UID stays blocked after restart
     reserved_uids.add(target["rfidUid"])
     _save_reserved(reserved_uids)
 
     _save([e for e in employees if e["id"] != emp_id])
-    return True
+    return target
 
 
 def edit_employee(emp_id: str, name: str | None, department: str | None) -> dict | None:
@@ -120,3 +120,14 @@ def update_employee_status(emp_id: str, status: str) -> bool:
             _save(employees)
             return True
     return False
+
+
+def reset_all_employee_statuses(status: str = "Absent") -> None:
+    employees = _load()
+    changed = False
+    for emp in employees:
+        if emp.get("status") != status:
+            emp["status"] = status
+            changed = True
+    if changed:
+        _save(employees)

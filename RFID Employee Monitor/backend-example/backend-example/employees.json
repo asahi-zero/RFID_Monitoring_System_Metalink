@@ -1,1 +1,16 @@
-[]
+[
+  {
+    "id": "EMP001",
+    "name": "Sanjo",
+    "department": "Assembly",
+    "status": "On Duty",
+    "rfidUid": "caac805"
+  },
+  {
+    "id": "EMP002",
+    "name": "James",
+    "department": "Cutting",
+    "status": "On Duty",
+    "rfidUid": "8150bd97"
+  }
+]

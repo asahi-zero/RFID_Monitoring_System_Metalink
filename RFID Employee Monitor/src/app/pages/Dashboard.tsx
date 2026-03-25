@@ -90,63 +90,99 @@ export function Dashboard() {
   });
 
   return (
-    <div className="p-8">
-      <h1 className="text-3xl mb-8">Dashboard</h1>
+    <div className="mx-auto max-w-[1600px] px-6 py-8 pb-14 sm:px-8">
+      <header className="mb-8 rounded-2xl border border-[#2E3192]/10 bg-white/70 px-6 py-5 shadow-sm backdrop-blur-sm">
+        <h1 className="text-3xl font-semibold tracking-tight text-[#2E3192]">
+          Dashboard
+        </h1>
+        <p className="mt-1.5 text-sm text-[#5A5FB8]">
+          Live camera and RFID activity
+        </p>
+      </header>
 
       {/* ================= SUMMARY CARDS ================= */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
-
-        <Card className="p-6 border-l-4 border-[#2E3192]">
-          <div className="flex justify-between">
+      <div className="grid grid-cols-1 gap-5 md:grid-cols-2 md:gap-6 lg:grid-cols-4 mb-8">
+        <Card className="relative overflow-hidden rounded-2xl border-[#2E3192]/12 bg-gradient-to-br from-white to-[#f0f4fc] p-6 shadow-sm">
+          <div className="absolute -right-6 -top-6 h-28 w-28 rounded-full bg-[#2E3192]/[0.06]" aria-hidden />
+          <div className="relative flex items-start justify-between gap-3">
             <div>
-              <p className="text-sm text-gray-600">Total Employees</p>
-              <p className="text-3xl">{stats.total}</p>
+              <p className="text-xs font-semibold uppercase tracking-wide text-[#5A5FB8]">
+                Total Employees
+              </p>
+              <p className="mt-2 text-3xl font-semibold tabular-nums text-[#2E3192]">
+                {stats.total}
+              </p>
             </div>
-            <Users className="w-10 h-10 text-[#2E3192]" />
+            <div className="rounded-xl bg-[#2E3192]/10 p-2.5">
+              <Users className="h-7 w-7 text-[#2E3192]" />
+            </div>
           </div>
         </Card>
 
-        <Card className="p-6 border-l-4 border-green-500">
-          <div className="flex justify-between">
+        <Card className="relative overflow-hidden rounded-2xl border-emerald-500/15 bg-gradient-to-br from-white to-emerald-50/40 p-6 shadow-sm">
+          <div className="absolute -right-8 -top-8 h-32 w-32 rounded-full bg-emerald-500/10" aria-hidden />
+          <div className="relative flex items-start justify-between gap-3">
             <div>
-              <p className="text-sm text-gray-600">On Duty</p>
-              <p className="text-3xl">{stats.onDuty}</p>
+              <p className="text-xs font-semibold uppercase tracking-wide text-emerald-700/80">
+                On Duty
+              </p>
+              <p className="mt-2 text-3xl font-semibold tabular-nums text-emerald-700">
+                {stats.onDuty}
+              </p>
             </div>
-            <UserCheck className="w-10 h-10 text-green-500" />
+            <div className="rounded-xl bg-emerald-500/15 p-2.5">
+              <UserCheck className="h-7 w-7 text-emerald-600" />
+            </div>
           </div>
         </Card>
 
-        <Card className="p-6 border-l-4 border-blue-500">
-          <div className="flex justify-between">
+        <Card className="relative overflow-hidden rounded-2xl border-[#2563eb]/15 bg-gradient-to-br from-white to-sky-50/50 p-6 shadow-sm">
+          <div className="absolute -right-8 -top-8 h-32 w-32 rounded-full bg-sky-400/10" aria-hidden />
+          <div className="relative flex items-start justify-between gap-3">
             <div>
-              <p className="text-sm text-gray-600">Off Duty</p>
-              <p className="text-3xl">{stats.offDuty}</p>
+              <p className="text-xs font-semibold uppercase tracking-wide text-sky-700/90">
+                Off Duty
+              </p>
+              <p className="mt-2 text-3xl font-semibold tabular-nums text-sky-700">
+                {stats.offDuty}
+              </p>
             </div>
-            <Coffee className="w-10 h-10 text-blue-500" />
+            <div className="rounded-xl bg-sky-500/15 p-2.5">
+              <Coffee className="h-7 w-7 text-sky-600" />
+            </div>
           </div>
         </Card>
 
-        <Card className="p-6 border-l-4 border-red-500">
-          <div className="flex justify-between">
+        <Card className="relative overflow-hidden rounded-2xl border-rose-500/15 bg-gradient-to-br from-white to-rose-50/40 p-6 shadow-sm">
+          <div className="absolute -right-8 -top-8 h-32 w-32 rounded-full bg-rose-400/10" aria-hidden />
+          <div className="relative flex items-start justify-between gap-3">
             <div>
-              <p className="text-sm text-gray-600">Absent</p>
-              <p className="text-3xl">{stats.absent}</p>
+              <p className="text-xs font-semibold uppercase tracking-wide text-rose-800/80">
+                Absent
+              </p>
+              <p className="mt-2 text-3xl font-semibold tabular-nums text-rose-700">
+                {stats.absent}
+              </p>
             </div>
-            <UserX className="w-10 h-10 text-red-500" />
+            <div className="rounded-xl bg-rose-500/15 p-2.5">
+              <UserX className="h-7 w-7 text-rose-600" />
+            </div>
           </div>
         </Card>
-
       </div>
 
       {/* ================= LIVE CAMERA ================= */}
-      <Card className="p-6 mb-8">
-        <h2 className="text-xl mb-4">Live Camera</h2>
-        <div className="flex justify-center">
+      <Card className="mb-8 overflow-hidden rounded-2xl border-[#0099DD]/20 bg-gradient-to-br from-white to-[#E8F4FB] p-0 shadow-sm">
+        <div className="border-b border-[#0099DD]/15 bg-white/60 px-6 py-4 backdrop-blur-sm">
+          <h2 className="text-lg font-semibold text-[#2E3192]">Live Camera</h2>
+          <p className="text-xs text-[#5A5FB8]">USB feed from the attendance backend</p>
+        </div>
+        <div className="flex justify-center p-8">
           <img
             ref={cameraRef}
             width="400"
             alt="Live Camera"
-            className="rounded-lg shadow border"
+            className="rounded-xl border border-[#2E3192]/10 shadow-lg shadow-[#2E3192]/10"
             onError={() => {
               if (retryTimer.current) clearTimeout(retryTimer.current);
               retryTimer.current = setTimeout(reloadCamera, 1000);
@@ -156,22 +192,23 @@ export function Dashboard() {
       </Card>
 
       {/* ================= TABLE ================= */}
-      <Card className="p-6">
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-4">
-          <h2 className="text-xl">Real-Time RFID Logs</h2>
-
-          <div className="relative w-full sm:w-72">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
+      <Card className="overflow-hidden rounded-2xl border-[#2E3192]/10 shadow-sm">
+        <div className="flex flex-col gap-4 border-b border-[#2E3192]/8 bg-gradient-to-r from-[#fafbfd] to-[#f4f8fc] px-6 py-5 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <h2 className="text-lg font-semibold text-[#2E3192]">Real-Time RFID Logs</h2>
+            <p className="text-xs text-[#5A5FB8]">Session scans from the reader</p>
+          </div>
+          <div className="relative w-full sm:max-w-xs">
+            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#5A5FB8]/70 pointer-events-none" />
             <Input
-              className="pl-9"
+              className="h-10 border-[#2E3192]/12 bg-white pl-9 shadow-sm"
               placeholder="Search by name or ID…"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
             />
           </div>
         </div>
-
-        <div className="overflow-x-auto">
+        <div className="p-0">
           <Table>
             <TableHeader>
               <TableRow>
@@ -244,7 +281,6 @@ export function Dashboard() {
           </Table>
         </div>
       </Card>
-
     </div>
   );
 }

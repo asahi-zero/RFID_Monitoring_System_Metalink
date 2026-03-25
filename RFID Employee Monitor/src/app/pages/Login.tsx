@@ -20,14 +20,24 @@ export function Login() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-[#2E3192] to-[#0099DD] flex items-center justify-center p-4">
-      <Card className="w-full max-w-md p-8 bg-white shadow-2xl">
-        <div className="text-center mb-8">
-          <div className="mb-6 px-12">
+    <div className="relative flex min-h-screen items-center justify-center overflow-hidden bg-gradient-to-br from-[#2E3192] via-[#2834A0] to-[#0099DD] p-4">
+      <div
+        className="pointer-events-none absolute inset-0 opacity-40"
+        aria-hidden
+        style={{
+          backgroundImage:
+            'radial-gradient(circle at 15% 20%, rgba(255,255,255,0.2) 0%, transparent 42%), radial-gradient(circle at 85% 70%, rgba(0,153,221,0.35) 0%, transparent 45%)',
+        }}
+      />
+      <Card className="relative w-full max-w-md border border-white/60 bg-white/95 p-8 shadow-2xl shadow-[#2E3192]/25 backdrop-blur-sm">
+        <div className="mb-8 text-center">
+          <div className="mb-6 rounded-2xl border border-[#2E3192]/8 bg-gradient-to-b from-white to-[#F7F9FC] px-10 py-6 shadow-inner">
             <MetalinkLogo className="w-full h-auto" />
           </div>
-          <h1 className="text-3xl mb-2">RFID Monitoring System</h1>
-          <p className="text-gray-600">Employee Attendance & Tracking</p>
+          <h1 className="mb-2 bg-gradient-to-r from-[#2E3192] to-[#0099DD] bg-clip-text text-3xl font-semibold tracking-tight text-transparent">
+            RFID Monitoring System
+          </h1>
+          <p className="text-muted-foreground">Employee attendance & tracking</p>
         </div>
 
         <form onSubmit={handleLogin} className="space-y-6">
@@ -57,7 +67,10 @@ export function Login() {
             />
           </div>
 
-          <Button type="submit" className="w-full bg-[#0099DD] hover:bg-[#0088CC]">
+          <Button
+            type="submit"
+            className="w-full bg-[#0099DD] font-semibold shadow-md shadow-[#0099DD]/30 transition-all hover:bg-[#0088CC] hover:shadow-lg hover:shadow-[#0099DD]/35"
+          >
             Login
           </Button>
         </form>

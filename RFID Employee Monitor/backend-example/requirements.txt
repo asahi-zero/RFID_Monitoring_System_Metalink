@@ -18,3 +18,4 @@ python-multipart==0.0.6           # For form data
 
 # Utilities
 python-dotenv==1.0.0      # For environment variables
+# TimeIn.mp3 is played via Windows MCI (winmm) in main.py — no extra package on Windows.

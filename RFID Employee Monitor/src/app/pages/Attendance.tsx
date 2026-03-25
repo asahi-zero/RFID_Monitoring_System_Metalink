@@ -4,7 +4,8 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Label } from '@/app/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/app/components/ui/select';
 import { Badge } from '@/app/components/ui/badge';
-import { Clock, CheckCircle, XCircle, Coffee } from 'lucide-react';
+import { Clock, CheckCircle, XCircle, Coffee, Search } from 'lucide-react';
+import { Input } from '@/app/components/ui/input';
 
 const API = 'http://localhost:8000/api';
 
@@ -12,6 +13,7 @@ export function Attendance() {
   const [employees, setEmployees]             = useState<any[]>([]);
   const [history, setHistory]                 = useState<any[]>([]);
   const [selectedDepartment, setSelectedDepartment] = useState('all');
+  const [searchQuery, setSearchQuery]           = useState('');
 
   const fetchEmployees = async () => {
     try {
@@ -55,7 +57,7 @@ export function Attendance() {
     }
   }
 
-  const rows = employees
+  const rowsAll = employees
     .filter(emp => selectedDepartment === 'all' || emp.department === selectedDepartment)
     .map(emp => {
       const scan = latestScanByEmpId[emp.id];
@@ -71,11 +73,20 @@ export function Attendance() {
       };
     });
 
+  const q = searchQuery.trim().toLowerCase();
+  const rows = q
+    ? rowsAll.filter(
+        (r) =>
+          (r.name && r.name.toLowerCase().includes(q)) ||
+          (r.employeeId && String(r.employeeId).toLowerCase().includes(q))
+      )
+    : rowsAll;
+
   // ================= STATS =================
-  const onDutyCount  = rows.filter(r => r.status === 'On Duty').length;
-  const offDutyCount = rows.filter(r => r.status === 'Off Duty').length;
-  const absentCount  = rows.filter(r => r.status === 'Absent').length;
-  const totalCount   = rows.length;
+  const onDutyCount  = rowsAll.filter(r => r.status === 'On Duty').length;
+  const offDutyCount = rowsAll.filter(r => r.status === 'Off Duty').length;
+  const absentCount  = rowsAll.filter(r => r.status === 'Absent').length;
+  const totalCount   = rowsAll.length;
 
   const getStatusBadge = (status: string) => {
     switch (status) {
@@ -90,58 +101,95 @@ export function Attendance() {
   };
 
   return (
-    <div className="p-8">
-      <h1 className="text-3xl mb-8">Attendance Monitoring</h1>
+    <div className="mx-auto max-w-[1600px] px-6 py-8 pb-14 sm:px-8">
+      <header className="mb-8 rounded-2xl border border-[#2E3192]/10 bg-white/70 px-6 py-5 shadow-sm backdrop-blur-sm">
+        <h1 className="text-3xl font-semibold tracking-tight text-[#2E3192]">
+          Attendance Monitoring
+        </h1>
+        <p className="mt-1.5 text-sm text-[#5A5FB8]">
+          Today’s clock-ins and status by department
+        </p>
+      </header>
 
       {/* ================= STATS CARDS ================= */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-6">
-        <Card className="p-6 border-l-4 border-[#0099DD]">
-          <div className="flex items-center justify-between">
+      <div className="mb-6 grid grid-cols-1 gap-5 md:grid-cols-2 md:gap-6 lg:grid-cols-4">
+        <Card className="relative overflow-hidden rounded-2xl border-[#0099DD]/20 bg-gradient-to-br from-white to-[#E8F4FB] p-6 shadow-sm">
+          <div className="absolute -right-6 -top-6 h-28 w-28 rounded-full bg-[#0099DD]/10" aria-hidden />
+          <div className="relative flex items-start justify-between">
             <div>
-              <p className="text-gray-600 text-sm mb-1">Total Employees</p>
-              <p className="text-3xl">{totalCount}</p>
+              <p className="text-xs font-semibold uppercase tracking-wide text-[#0099DD]">
+                Total (filtered)
+              </p>
+              <p className="mt-2 text-3xl font-semibold tabular-nums text-[#2E3192]">
+                {totalCount}
+              </p>
             </div>
-            <Clock className="w-12 h-12 text-[#0099DD]" />
+            <div className="rounded-xl bg-[#0099DD]/15 p-2.5">
+              <Clock className="h-7 w-7 text-[#0099DD]" />
+            </div>
           </div>
         </Card>
 
-        <Card className="p-6 border-l-4 border-green-500">
-          <div className="flex items-center justify-between">
+        <Card className="relative overflow-hidden rounded-2xl border-emerald-500/15 bg-gradient-to-br from-white to-emerald-50/40 p-6 shadow-sm">
+          <div className="relative flex items-start justify-between">
             <div>
-              <p className="text-gray-600 text-sm mb-1">On Duty</p>
-              <p className="text-3xl">{onDutyCount}</p>
+              <p className="text-xs font-semibold uppercase tracking-wide text-emerald-700/80">
+                On duty
+              </p>
+              <p className="mt-2 text-3xl font-semibold tabular-nums text-emerald-700">
+                {onDutyCount}
+              </p>
             </div>
-            <CheckCircle className="w-12 h-12 text-green-500" />
+            <div className="rounded-xl bg-emerald-500/15 p-2.5">
+              <CheckCircle className="h-7 w-7 text-emerald-600" />
+            </div>
           </div>
         </Card>
 
-        <Card className="p-6 border-l-4 border-blue-500">
-          <div className="flex items-center justify-between">
+        <Card className="relative overflow-hidden rounded-2xl border-sky-500/15 bg-gradient-to-br from-white to-sky-50/50 p-6 shadow-sm">
+          <div className="relative flex items-start justify-between">
             <div>
-              <p className="text-gray-600 text-sm mb-1">Off Duty</p>
-              <p className="text-3xl">{offDutyCount}</p>
+              <p className="text-xs font-semibold uppercase tracking-wide text-sky-700/90">
+                Off duty
+              </p>
+              <p className="mt-2 text-3xl font-semibold tabular-nums text-sky-700">
+                {offDutyCount}
+              </p>
             </div>
-            <Coffee className="w-12 h-12 text-blue-500" />
+            <div className="rounded-xl bg-sky-500/15 p-2.5">
+              <Coffee className="h-7 w-7 text-sky-600" />
+            </div>
           </div>
         </Card>
 
-        <Card className="p-6 border-l-4 border-red-500">
-          <div className="flex items-center justify-between">
+        <Card className="relative overflow-hidden rounded-2xl border-rose-500/15 bg-gradient-to-br from-white to-rose-50/40 p-6 shadow-sm">
+          <div className="relative flex items-start justify-between">
             <div>
-              <p className="text-gray-600 text-sm mb-1">Absent</p>
-              <p className="text-3xl">{absentCount}</p>
+              <p className="text-xs font-semibold uppercase tracking-wide text-rose-800/80">
+                Absent
+              </p>
+              <p className="mt-2 text-3xl font-semibold tabular-nums text-rose-700">
+                {absentCount}
+              </p>
             </div>
-            <XCircle className="w-12 h-12 text-red-500" />
+            <div className="rounded-xl bg-rose-500/15 p-2.5">
+              <XCircle className="h-7 w-7 text-rose-600" />
+            </div>
           </div>
         </Card>
       </div>
 
       {/* ================= FILTER ================= */}
-      <Card className="p-6 mb-6 bg-gradient-to-r from-[#F0F1FA] to-[#E5F5FC]">
+      <Card className="mb-6 overflow-hidden rounded-2xl border-[#0099DD]/20 bg-gradient-to-r from-[#F0F5FB] via-white to-[#E5F5FC] p-6 shadow-sm">
         <div className="max-w-xs">
-          <Label htmlFor="department">Filter by Department</Label>
+          <Label htmlFor="department" className="text-[#2E3192]">
+            Filter by department
+          </Label>
           <Select value={selectedDepartment} onValueChange={setSelectedDepartment}>
-            <SelectTrigger id="department" className="mt-2">
+            <SelectTrigger
+              id="department"
+              className="mt-2 border-[#2E3192]/15 bg-white shadow-sm"
+            >
               <SelectValue placeholder="Select department" />
             </SelectTrigger>
             <SelectContent>
@@ -155,12 +203,25 @@ export function Attendance() {
       </Card>
 
       {/* ================= TABLE ================= */}
-      <Card className="p-6">
-        <h2 className="text-xl mb-4">
-          Attendance Records
-          <span className="text-sm text-gray-400 ml-3">{today}</span>
-        </h2>
-        <div className="overflow-x-auto">
+      <Card className="overflow-hidden rounded-2xl border-[#2E3192]/10 shadow-sm">
+        <div className="flex flex-col gap-4 border-b border-[#2E3192]/8 bg-gradient-to-r from-[#fafbfd] to-[#f4f8fc] px-6 py-5 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <h2 className="text-lg font-semibold text-[#2E3192]">Attendance records</h2>
+            <p className="text-xs text-[#5A5FB8]">
+              Date: <span className="font-medium text-[#2E3192]">{today}</span>
+            </p>
+          </div>
+          <div className="relative w-full sm:max-w-xs">
+            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#5A5FB8]/70" />
+            <Input
+              className="h-10 border-[#2E3192]/12 bg-white pl-9 shadow-sm"
+              placeholder="Search by name or employee ID…"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+            />
+          </div>
+        </div>
+        <div className="overflow-x-auto px-4 pb-5 pt-2">
           <Table>
             <TableHeader>
               <TableRow>
@@ -175,10 +236,16 @@ export function Attendance() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {rows.length === 0 ? (
+              {rowsAll.length === 0 ? (
                 <TableRow>
                   <TableCell colSpan={8} className="text-center text-gray-400 py-8">
                     No employees registered yet.
+                  </TableCell>
+                </TableRow>
+              ) : rows.length === 0 ? (
+                <TableRow>
+                  <TableCell colSpan={8} className="text-center text-gray-400 py-8">
+                    No results match your search.
                   </TableCell>
                 </TableRow>
               ) : (

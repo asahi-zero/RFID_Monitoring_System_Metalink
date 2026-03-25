@@ -216,8 +216,15 @@ const fetchEmployees = async () => {
 
   // ── RENDER ───────────────────────────────────────────────────────────────
   return (
-    <div className="p-8">
-      <h1 className="text-3xl mb-8">Employees</h1>
+    <div className="mx-auto max-w-[1600px] px-6 py-8 pb-14 sm:px-8">
+      <header className="mb-8 rounded-2xl border border-[#2E3192]/10 bg-white/70 px-6 py-5 shadow-sm backdrop-blur-sm">
+        <h1 className="text-3xl font-semibold tracking-tight text-[#2E3192]">
+          Employees
+        </h1>
+        <p className="mt-1.5 text-sm text-[#5A5FB8]">
+          Register and manage RFID-linked staff
+        </p>
+      </header>
 
       {/* ── Toast ── */}
       {toast && (
@@ -231,28 +238,37 @@ const fetchEmployees = async () => {
       )}
 
       {/* ── Summary card ── */}
-      <Card className="p-6 mb-6 border-l-4 border-[#2E3192]">
-        <div className="flex items-center gap-4">
-          <Users className="w-10 h-10 text-[#2E3192]" />
+      <Card className="relative mb-6 overflow-hidden rounded-2xl border-[#2E3192]/12 bg-gradient-to-br from-white to-[#f0f4fc] p-6 shadow-sm">
+        <div className="absolute -right-4 -top-4 h-24 w-24 rounded-full bg-[#0099DD]/10" aria-hidden />
+        <div className="relative flex items-center gap-4">
+          <div className="rounded-xl bg-[#2E3192]/10 p-3">
+            <Users className="h-8 w-8 text-[#2E3192]" />
+          </div>
           <div>
-            <p className="text-sm text-gray-500">Total Registered Employees</p>
-            <p className="text-3xl font-semibold text-[#2E3192]">{employees.length}</p>
+            <p className="text-xs font-semibold uppercase tracking-wide text-[#5A5FB8]">
+              Total registered
+            </p>
+            <p className="text-3xl font-semibold tabular-nums text-[#2E3192]">
+              {employees.length}
+            </p>
           </div>
         </div>
       </Card>
 
       {/* ── Pending UIDs ── */}
       {pendingUids.length > 0 && (
-        <Card className="p-6 mb-6 border-l-4 border-yellow-400 bg-yellow-50">
-          <h2 className="text-lg font-semibold mb-3 text-yellow-700 flex items-center gap-2">
-            <UserPlus className="w-5 h-5" />
-            Unregistered RFID Tags ({pendingUids.length})
+        <Card className="mb-6 overflow-hidden rounded-2xl border-amber-400/30 bg-gradient-to-br from-amber-50/90 to-white p-6 shadow-sm ring-1 ring-amber-400/20">
+          <h2 className="mb-4 flex items-center gap-2 text-lg font-semibold text-amber-900">
+            <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-amber-400/25">
+              <UserPlus className="h-5 w-5 text-amber-800" />
+            </span>
+            Unregistered RFID tags ({pendingUids.length})
           </h2>
           <div className="space-y-2">
             {pendingUids.map((p) => (
               <div
                 key={p.rfidUid}
-                className="flex items-center justify-between bg-white rounded-lg px-4 py-2 border border-yellow-200"
+                className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-amber-200/80 bg-white/90 px-4 py-3 shadow-sm"
               >
                 <div>
                   <span className="font-mono text-sm font-medium">{p.rfidUid}</span>
@@ -287,17 +303,22 @@ const fetchEmployees = async () => {
       )}
 
       {/* ── Employee Table ── */}
-      <Card className="p-6">
-        <h2 className="text-xl mb-4">Employee List</h2>
-
+      <Card className="overflow-hidden rounded-2xl border-[#2E3192]/10 shadow-sm">
+        <div className="border-b border-[#2E3192]/8 bg-gradient-to-r from-[#fafbfd] to-[#f4f8fc] px-6 py-5">
+          <h2 className="text-lg font-semibold text-[#2E3192]">Employee list</h2>
+          <p className="text-xs text-[#5A5FB8]">Edit, delete, or review RFID status</p>
+        </div>
+        <div className="p-6 pt-5">
         {loading ? (
-          <div className="flex items-center gap-2 text-gray-400 py-6">
-            <Loader2 className="w-4 h-4 animate-spin" /> Loading employees…
+          <div className="flex items-center gap-2 py-10 text-[#5A5FB8]">
+            <Loader2 className="h-5 w-5 animate-spin" /> Loading employees…
           </div>
         ) : employees.length === 0 ? (
-          <p className="text-gray-400 py-6 text-center">No employees registered yet.</p>
+          <p className="py-10 text-center text-sm text-[#5A5FB8]">
+            No employees registered yet.
+          </p>
         ) : (
-          <div className="overflow-x-auto">
+          <div className="-mx-2 overflow-x-auto px-2">
             <Table>
               <TableHeader>
                 <TableRow>
@@ -344,6 +365,7 @@ const fetchEmployees = async () => {
             </Table>
           </div>
         )}
+        </div>
       </Card>
 
       {/* ══════════════ DELETE CONFIRMATION DIALOG ══════════════ */}

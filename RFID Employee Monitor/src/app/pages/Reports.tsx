@@ -208,77 +208,101 @@ export function Reports() {
 
   // ================= RENDER =================
   return (
-    <div className="p-8">
-      <div className="flex items-center justify-between mb-8">
-        <h1 className="text-3xl">Reports</h1>
+    <div className="mx-auto max-w-[1600px] px-6 py-8 pb-14 sm:px-8">
+      <div className="mb-8 flex flex-col gap-4 rounded-2xl border border-[#2E3192]/10 bg-white/70 px-6 py-5 shadow-sm backdrop-blur-sm sm:flex-row sm:items-end sm:justify-between">
+        <div>
+          <h1 className="text-3xl font-semibold tracking-tight text-[#2E3192]">Reports</h1>
+          <p className="mt-1.5 text-sm text-[#5A5FB8]">Attendance summaries and exports</p>
+        </div>
         {report?.date && (
-          <span className="text-sm text-gray-500 bg-gray-100 rounded px-3 py-1">
+          <span className="inline-flex w-fit items-center rounded-xl border border-[#0099DD]/30 bg-[#E5F5FC] px-4 py-2 text-sm font-semibold text-[#2E3192] shadow-sm">
             {report.date}
           </span>
         )}
       </div>
 
       {/* ---- ACTION BUTTONS ---- */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
+      <div className="mb-8 grid grid-cols-1 gap-4 md:grid-cols-3">
         <Button
-          className="h-auto py-4 flex-col gap-2 bg-[#2E3192] hover:bg-[#252A7A]"
+          className="h-auto flex-col gap-2 rounded-2xl border border-[#2E3192]/20 bg-gradient-to-br from-[#2E3192] to-[#252A7A] py-5 shadow-md shadow-[#2E3192]/25 transition-all hover:from-[#3539a0] hover:to-[#2E3192] hover:shadow-lg"
           onClick={() => fetchReport()}
           disabled={loading}
         >
-          {loading ? <Loader2 className="w-6 h-6 animate-spin" /> : <RefreshCw className="w-6 h-6" />}
-          <span>Refresh Report</span>
+          {loading ? <Loader2 className="h-6 w-6 animate-spin" /> : <RefreshCw className="h-6 w-6" />}
+          <span className="font-semibold">Refresh report</span>
         </Button>
 
         <Button
-          className="h-auto py-4 flex-col gap-2 bg-[#0099DD] hover:bg-[#0088CC]"
+          className="h-auto flex-col gap-2 rounded-2xl border border-[#0099DD]/30 bg-gradient-to-br from-[#0099DD] to-[#0080c7] py-5 shadow-md shadow-[#0099DD]/25 transition-all hover:shadow-lg"
           onClick={handlePdfExport}
           disabled={!report}
         >
-          <FileText className="w-6 h-6" />
-          <span>Export to PDF</span>
+          <FileText className="h-6 w-6" />
+          <span className="font-semibold">Export to PDF</span>
         </Button>
 
         <Button
-          className="h-auto py-4 flex-col gap-2 bg-[#5A5FB8] hover:bg-[#4A4FA0]"
+          className="h-auto flex-col gap-2 rounded-2xl border border-[#5A5FB8]/25 bg-gradient-to-br from-[#5A5FB8] to-[#45499e] py-5 shadow-md shadow-[#5A5FB8]/20 transition-all hover:shadow-lg"
           onClick={handleExcelExport}
           disabled={!report || exporting}
         >
-          {exporting ? <Loader2 className="w-6 h-6 animate-spin" /> : <Download className="w-6 h-6" />}
-          <span>Export to Excel / CSV</span>
+          {exporting ? <Loader2 className="h-6 w-6 animate-spin" /> : <Download className="h-6 w-6" />}
+          <span className="font-semibold">Export Excel / CSV</span>
         </Button>
       </div>
 
       {/* ---- DAILY SUMMARY ---- */}
-      <Card className="p-6 mb-6">
-        <h2 className="text-xl mb-4">Daily Summary</h2>
+      <Card className="mb-6 overflow-hidden rounded-2xl border-[#2E3192]/10 shadow-sm">
+        <div className="border-b border-[#2E3192]/8 bg-gradient-to-r from-[#fafbfd] to-[#f4f8fc] px-6 py-4">
+          <h2 className="text-lg font-semibold text-[#2E3192]">Daily summary</h2>
+          <p className="text-xs text-[#5A5FB8]">Headcount for the selected report day</p>
+        </div>
+        <div className="p-6">
         {loading ? (
-          <div className="flex items-center gap-2 text-gray-400">
-            <Loader2 className="w-4 h-4 animate-spin" /> Loading...
+          <div className="flex items-center gap-2 text-[#5A5FB8]">
+            <Loader2 className="h-5 w-5 animate-spin" /> Loading…
           </div>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            <div className="text-center p-4 bg-[#F0F1FA] rounded-lg">
-              <p className="text-gray-600 text-sm mb-1">Total Employees</p>
-              <p className="text-4xl font-semibold text-[#2E3192]">{report?.total ?? 0}</p>
+          <div className="grid grid-cols-1 gap-5 md:grid-cols-3">
+            <div className="rounded-2xl border border-[#2E3192]/10 bg-gradient-to-br from-[#F0F4FC] to-white p-6 text-center shadow-sm">
+              <p className="text-xs font-semibold uppercase tracking-wide text-[#5A5FB8]">
+                Total employees
+              </p>
+              <p className="mt-2 text-4xl font-semibold tabular-nums text-[#2E3192]">
+                {report?.total ?? 0}
+              </p>
             </div>
-            <div className="text-center p-4 bg-green-50 rounded-lg">
-              <p className="text-gray-600 text-sm mb-1">Present Today</p>
-              <p className="text-4xl font-semibold text-green-600">{report?.present ?? 0}</p>
+            <div className="rounded-2xl border border-emerald-500/20 bg-gradient-to-br from-emerald-50 to-white p-6 text-center shadow-sm">
+              <p className="text-xs font-semibold uppercase tracking-wide text-emerald-800/80">
+                Present today
+              </p>
+              <p className="mt-2 text-4xl font-semibold tabular-nums text-emerald-600">
+                {report?.present ?? 0}
+              </p>
             </div>
-            <div className="text-center p-4 bg-red-50 rounded-lg">
-              <p className="text-gray-600 text-sm mb-1">Absent Today</p>
-              <p className="text-4xl font-semibold text-red-500">{report?.absent ?? 0}</p>
+            <div className="rounded-2xl border border-rose-500/20 bg-gradient-to-br from-rose-50 to-white p-6 text-center shadow-sm">
+              <p className="text-xs font-semibold uppercase tracking-wide text-rose-800/80">
+                Absent today
+              </p>
+              <p className="mt-2 text-4xl font-semibold tabular-nums text-rose-600">
+                {report?.absent ?? 0}
+              </p>
             </div>
           </div>
         )}
+        </div>
       </Card>
 
       {/* ---- CHARTS ---- */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+      <div className="mb-6 grid grid-cols-1 gap-6 lg:grid-cols-2">
 
         {/* Bar Chart — Weekly Attendance */}
-        <Card className="p-6">
-          <h2 className="text-xl mb-4">Weekly Attendance</h2>
+        <Card className="overflow-hidden rounded-2xl border-[#2E3192]/10 shadow-sm">
+          <div className="border-b border-[#2E3192]/8 bg-gradient-to-r from-[#fafbfd] to-[#f4f8fc] px-6 py-4">
+            <h2 className="text-lg font-semibold text-[#2E3192]">Weekly attendance</h2>
+            <p className="text-xs text-[#5A5FB8]">Present vs absent trend</p>
+          </div>
+          <div className="p-6">
           <ResponsiveContainer width="100%" height={300}>
             <BarChart data={attendanceData} margin={{ top: 20, right: 16, left: 0, bottom: 0 }}>
               <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
@@ -295,11 +319,16 @@ export function Reports() {
               <Bar dataKey="absent" fill="#ef4444" name="Absent" radius={[4, 4, 0, 0]} isAnimationActive={true} animationDuration={900} animationBegin={200} />
             </BarChart>
           </ResponsiveContainer>
+          </div>
         </Card>
 
         {/* Pie Chart — Department Activity Today */}
-        <Card className="p-6">
-          <h2 className="text-xl mb-4">Department Activity Today</h2>
+        <Card className="overflow-hidden rounded-2xl border-[#2E3192]/10 shadow-sm">
+          <div className="border-b border-[#2E3192]/8 bg-gradient-to-r from-[#fafbfd] to-[#f4f8fc] px-6 py-4">
+            <h2 className="text-lg font-semibold text-[#2E3192]">Department activity today</h2>
+            <p className="text-xs text-[#5A5FB8]">Share by department</p>
+          </div>
+          <div className="p-6">
           <ResponsiveContainer width="100%" height={300}>
             <PieChart>
               <Pie
@@ -327,61 +356,87 @@ export function Reports() {
             </PieChart>
           </ResponsiveContainer>
           {/* Legend */}
-          <div className="flex flex-wrap gap-3 justify-center mt-2">
+          <div className="mt-2 flex flex-wrap justify-center gap-2">
             {deptData.map((dept: any, i: number) => (
               <button
                 key={dept.name}
+                type="button"
                 onClick={() => setActiveIndex(i)}
-                className={`flex items-center gap-1.5 text-sm px-2 py-1 rounded transition-all ${activeIndex === i ? 'bg-gray-100 font-semibold' : 'hover:bg-gray-50'}`}
+                className={`flex items-center gap-2 rounded-lg border px-3 py-1.5 text-sm transition-all ${
+                  activeIndex === i
+                    ? 'border-[#2E3192]/25 bg-[#f0f4fc] font-semibold text-[#2E3192]'
+                    : 'border-transparent hover:bg-white/80 hover:shadow-sm'
+                }`}
               >
-                <span className="inline-block w-3 h-3 rounded-full" style={{ background: COLORS[i % COLORS.length] }} />
+                <span className="inline-block h-3 w-3 rounded-full shadow-sm" style={{ background: COLORS[i % COLORS.length] }} />
                 {dept.name}
               </button>
             ))}
+          </div>
           </div>
         </Card>
       </div>
 
       {/* ---- ATTENDANCE DETAILS TABLE ---- */}
-      <Card className="p-6">
-        <h2 className="text-xl mb-4">Today's Attendance Log</h2>
-
+      <Card className="overflow-hidden rounded-2xl border-[#2E3192]/10 shadow-sm">
+        <div className="border-b border-[#2E3192]/8 bg-gradient-to-r from-[#fafbfd] to-[#f4f8fc] px-6 py-4">
+          <h2 className="text-lg font-semibold text-[#2E3192]">Today&apos;s attendance log</h2>
+          <p className="text-xs text-[#5A5FB8]">Per-employee times and status</p>
+        </div>
+        <div className="p-6 pt-4">
         {loading ? (
-          <div className="flex items-center gap-2 text-gray-400 py-4">
-            <Loader2 className="w-4 h-4 animate-spin" /> Loading...
+          <div className="flex items-center gap-2 py-6 text-[#5A5FB8]">
+            <Loader2 className="h-5 w-5 animate-spin" /> Loading…
           </div>
         ) : !report?.details?.length ? (
-          <p className="text-gray-400 text-sm py-4">No attendance records yet for today.</p>
+          <p className="py-6 text-sm text-[#5A5FB8]">
+            No attendance records yet for today.
+          </p>
         ) : (
-          <div className="overflow-x-auto">
+          <div className="overflow-x-auto rounded-xl border border-[#2E3192]/8">
             <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b">
-                  <th className="text-left py-2 px-3 text-gray-600">Employee ID</th>
-                  <th className="text-left py-2 px-3 text-gray-600">Name</th>
-                  <th className="text-left py-2 px-3 text-gray-600">Department</th>
-                  <th className="text-left py-2 px-3 text-gray-600">Time In</th>
-                  <th className="text-left py-2 px-3 text-gray-600">Time Out</th>
-                  <th className="text-left py-2 px-3 text-gray-600">Total Hours</th>
-                  <th className="text-left py-2 px-3 text-gray-600">Status</th>
+              <thead className="bg-gradient-to-b from-[#eef2f9]/90 to-[#e8edf5]/80">
+                <tr className="border-b border-[#2E3192]/10">
+                  <th className="px-3 py-3 text-left text-xs font-semibold uppercase tracking-wide text-[#5A5FB8]">
+                    Employee ID
+                  </th>
+                  <th className="px-3 py-3 text-left text-xs font-semibold uppercase tracking-wide text-[#5A5FB8]">
+                    Name
+                  </th>
+                  <th className="px-3 py-3 text-left text-xs font-semibold uppercase tracking-wide text-[#5A5FB8]">
+                    Department
+                  </th>
+                  <th className="px-3 py-3 text-left text-xs font-semibold uppercase tracking-wide text-[#5A5FB8]">
+                    Time In
+                  </th>
+                  <th className="px-3 py-3 text-left text-xs font-semibold uppercase tracking-wide text-[#5A5FB8]">
+                    Time Out
+                  </th>
+                  <th className="px-3 py-3 text-left text-xs font-semibold uppercase tracking-wide text-[#5A5FB8]">
+                    Total Hours
+                  </th>
+                  <th className="px-3 py-3 text-left text-xs font-semibold uppercase tracking-wide text-[#5A5FB8]">
+                    Status
+                  </th>
                 </tr>
               </thead>
               <tbody>
                 {report.details.map((d: any) => (
-                  <tr key={d.id} className="border-b hover:bg-gray-50">
-                    <td className="py-2 px-3 font-medium">{d.employee_id}</td>
-                    <td className="py-2 px-3">{d.name}</td>
-                    <td className="py-2 px-3">{d.department}</td>
-                    <td className="py-2 px-3 text-green-700">{d.time_in  || '—'}</td>
-                    <td className="py-2 px-3 text-blue-700">{d.time_out || '—'}</td>
-                    <td className="py-2 px-3 font-semibold text-[#2E3192]">{d.total_hours || '—'}</td>
-                    <td className="py-2 px-3">{getStatusBadge(d.status)}</td>
+                  <tr key={d.id} className="border-b border-[#2E3192]/6 transition-colors hover:bg-[#f8fafc]">
+                    <td className="px-3 py-2.5 font-medium text-[#334155]">{d.employee_id}</td>
+                    <td className="px-3 py-2.5 text-[#334155]">{d.name}</td>
+                    <td className="px-3 py-2.5 text-[#334155]">{d.department}</td>
+                    <td className="px-3 py-2.5 font-medium text-emerald-700">{d.time_in  || '—'}</td>
+                    <td className="px-3 py-2.5 font-medium text-sky-700">{d.time_out || '—'}</td>
+                    <td className="px-3 py-2.5 font-semibold text-[#2E3192]">{d.total_hours || '—'}</td>
+                    <td className="px-3 py-2.5">{getStatusBadge(d.status)}</td>
                   </tr>
                 ))}
               </tbody>
             </table>
           </div>
         )}
+        </div>
       </Card>
     </div>
   );

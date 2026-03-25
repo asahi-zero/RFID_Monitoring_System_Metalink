@@ -5,9 +5,12 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from datetime import datetime
 from typing import Optional
-import threading
+from collections import defaultdict
+import ctypes
 import json
 import os
+import sys
+import threading
 
 try:
     import cv2
@@ -21,6 +24,77 @@ try:
 except ImportError:
     WINSOUND_AVAILABLE = False
 
+try:
+    from playsound import playsound as _playsound_file
+    PLAYSOUND_AVAILABLE = True
+except ImportError:
+    PLAYSOUND_AVAILABLE = False
+    _playsound_file = None  # type: ignore[misc, assignment]
+
+# sounds/ lives next to backend-example/ (parent of this package)
+_BACKEND_DIR = os.path.dirname(os.path.abspath(__file__))
+_SOUNDS_DIR = os.path.normpath(os.path.join(_BACKEND_DIR, "..", "sounds"))
+TIME_IN_MP3 = os.path.join(_SOUNDS_DIR, "TimeIn.mp3")
+_MCI_TIMEIN_ALIAS = "rfid_timein"
+
+
+def _play_windows_alias(alias: str) -> None:
+    if not WINSOUND_AVAILABLE:
+        return
+    try:
+        winsound.PlaySound(alias, winsound.SND_ALIAS)
+    except Exception:
+        pass
+
+
+def _play_sound_thread(target) -> None:
+    threading.Thread(target=target, daemon=True).start()
+
+
+def _play_time_in_sound() -> None:
+    """Clock-in: play sounds/TimeIn.mp3 (Windows: MCI/winmm). Else playsound if installed."""
+
+    def _run() -> None:
+        if not os.path.isfile(TIME_IN_MP3):
+            _play_windows_alias("SystemExclamation")
+            return
+        if sys.platform == "win32":
+            buf = ctypes.create_unicode_buffer(512)
+            mci = ctypes.windll.winmm.mciSendStringW
+            try:
+                mci(f"close {_MCI_TIMEIN_ALIAS}", buf, 500, None)
+                path = os.path.abspath(TIME_IN_MP3).replace("\\", "/")
+                if mci(f'open "{path}" type mpegvideo alias {_MCI_TIMEIN_ALIAS}', buf, 500, None) != 0:
+                    print(f"Warning: could not open TimeIn.mp3 (MCI): {buf.value!r}")
+                    _play_windows_alias("SystemExclamation")
+                    return
+                mci(f"play {_MCI_TIMEIN_ALIAS} wait", buf, 500, None)
+            except Exception as e:
+                print(f"Warning: TimeIn.mp3 playback: {e}")
+                _play_windows_alias("SystemExclamation")
+            finally:
+                mci(f"close {_MCI_TIMEIN_ALIAS}", buf, 500, None)
+            return
+        if PLAYSOUND_AVAILABLE and _playsound_file is not None:
+            try:
+                _playsound_file(TIME_IN_MP3, block=True)
+                return
+            except Exception as e:
+                print(f"Warning: playsound TimeIn.mp3: {e}")
+        _play_windows_alias("SystemExclamation")
+
+    _play_sound_thread(_run)
+
+
+def _play_clock_out_sound() -> None:
+    """Short system sound on clock-out (MP3 optional later)."""
+
+    def _run() -> None:
+        _play_windows_alias("SystemAsterisk")
+
+    _play_sound_thread(_run)
+
+
 from .employee_db import (
     get_all_employees,
     get_employee_by_uid,
@@ -30,6 +104,7 @@ from .employee_db import (
     delete_employee,
     edit_employee,
     update_employee_status,
+    reset_all_employee_statuses,
 )
 
 # ================= FASTAPI =================
@@ -70,14 +145,11 @@ def _save_history(history: list) -> None:
         print(f"Warning: Could not save scan history: {e}")
 
 
-# ✅ FIX 2: Only load TODAY's entries into the in-memory list on startup.
-# History from previous days stays in scan_history.json for the reports page
-# but is NOT shown on the live dashboard when the system restarts.
-_today_str = datetime.now().strftime("%Y-%m-%d")
-rfid_scan_history: list = [
-    entry for entry in _load_history()
-    if entry.get("date") == _today_str
-]
+# Persisted full history (for reports) and a session-only history (for dashboard).
+# Session history always starts empty after backend restart.
+all_rfid_scan_history: list = _load_history()
+rfid_scan_history: list = []
+reset_all_employee_statuses("Absent")
 
 # Track pending unregistered UIDs waiting for user confirmation
 pending_uids: dict[str, str] = {}  # uid -> first_seen_time
@@ -175,11 +247,20 @@ def edit_employee_route(emp_id: str, data: EditEmployeeData):   # ✅ FIX 1: res
 
 @app.delete("/api/employees/{emp_id}")
 def remove_employee(emp_id: str):
-    """Delete an employee. Their RFID UID is reserved for future re-registration."""
-    success = delete_employee(emp_id)
-    if not success:
+    """Delete an employee without auto-queuing the UID for re-registration."""
+    deleted_employee = delete_employee(emp_id)
+    if not deleted_employee:
         raise HTTPException(status_code=404, detail="Employee not found")
-    return {"message": f"Employee {emp_id} deleted. RFID UID reserved for re-registration."}
+
+    deleted_id = deleted_employee.get("id")
+    if deleted_id:
+        # Remove stale rows from live dashboard/session history.
+        global rfid_scan_history, all_rfid_scan_history
+        rfid_scan_history = [entry for entry in rfid_scan_history if entry.get("id") != deleted_id]
+        all_rfid_scan_history = [entry for entry in all_rfid_scan_history if entry.get("id") != deleted_id]
+        _save_history(all_rfid_scan_history)
+
+    return {"message": f"Employee {emp_id} deleted. Scan the card again to re-enroll its UID."}
 
 
 # ================= PENDING UIDS =================
@@ -221,12 +302,7 @@ def rfid_scan(scan: RFIDScan):
             }
         )
 
-    # -- Registered card — allow through regardless of area ------------------
-    if WINSOUND_AVAILABLE:
-        try:
-            winsound.PlaySound("SystemExclamation", winsound.SND_ALIAS)
-        except Exception:
-            pass
+    # -- Registered card — sounds play after we know clock-in vs clock-out --
 
     # ================= SNAPSHOT =================
     image_path = None
@@ -239,7 +315,7 @@ def rfid_scan(scan: RFIDScan):
 
     # ================= CLOCK IN / CLOCK OUT =================
     existing_scan = None
-    for entry in reversed(rfid_scan_history):
+    for entry in reversed(all_rfid_scan_history):
         if entry["id"] == employee["id"] and entry.get("date") == current_date:
             if entry.get("timeOut") is None:
                 existing_scan = entry
@@ -257,7 +333,22 @@ def rfid_scan(scan: RFIDScan):
         existing_scan["totalWorkHours"] = f"{hours}h {minutes}m"
         existing_scan["status"] = "Off Duty"
         update_employee_status(employee["id"], "Off Duty")
-        _save_history(rfid_scan_history)
+
+        # Keep session list in sync if this clock-in happened this runtime.
+        for session_entry in reversed(rfid_scan_history):
+            if (
+                session_entry.get("id") == existing_scan.get("id")
+                and session_entry.get("date") == existing_scan.get("date")
+                and session_entry.get("timeIn") == existing_scan.get("timeIn")
+                and session_entry.get("timeOut") is None
+            ):
+                session_entry["timeOut"] = existing_scan["timeOut"]
+                session_entry["totalWorkHours"] = existing_scan["totalWorkHours"]
+                session_entry["status"] = "Off Duty"
+                break
+
+        _save_history(all_rfid_scan_history)
+        _play_clock_out_sound()
         return {"message": "Clock-out recorded", "data": existing_scan}
     else:
         # First scan = Clock In -> On Duty
@@ -273,9 +364,11 @@ def rfid_scan(scan: RFIDScan):
             "totalWorkHours": None,
             "image":          image_path,
         }
-        rfid_scan_history.append(scan_event)
+        all_rfid_scan_history.append(scan_event)
+        rfid_scan_history.append(scan_event.copy())
         update_employee_status(employee["id"], "On Duty")
-        _save_history(rfid_scan_history)
+        _save_history(all_rfid_scan_history)
+        _play_time_in_sound()
         return {"message": "Clock-in recorded", "data": scan_event}
 
 
@@ -284,6 +377,73 @@ def rfid_scan(scan: RFIDScan):
 @app.get("/api/rfid/history")
 def get_history():
     return rfid_scan_history
+
+
+# ================= ACTIVITY (by scan area, today) =================
+
+def _area_display_name(area: str | None) -> str:
+    """Map stored scan area to card titles (matches UI: Cutting Area, …)."""
+    if not area or not str(area).strip():
+        return "Unknown Area"
+    a = str(area).strip()
+    mapping = {
+        "Cutting": "Cutting Area",
+        "Assembly": "Assembly Area",
+        "Warehouse": "Warehouse Area",
+    }
+    return mapping.get(a, a if a.endswith("Area") else f"{a} Area")
+
+
+@app.get("/api/activity/areas")
+def get_activity_areas():
+    """
+    Employees currently On Duty today, grouped by last scan `area` (from RFID bridge).
+    Uses persisted scan history so it survives backend restarts.
+    """
+    today = datetime.now().strftime("%Y-%m-%d")
+    full = _load_history()
+    today_entries = [e for e in full if e.get("date") == today]
+    today_entries.sort(key=lambda x: x.get("timeIn") or "")
+
+    latest_by_emp: dict[str, dict] = {}
+    for e in today_entries:
+        eid = e.get("id")
+        if eid:
+            latest_by_emp[eid] = e
+
+    groups: dict[str, list[str]] = defaultdict(list)
+    for e in latest_by_emp.values():
+        if e.get("timeOut") is not None:
+            continue
+        if e.get("status") != "On Duty":
+            continue
+        label = _area_display_name(e.get("area"))
+        name = e.get("name") or str(e.get("id") or "—")
+        if name not in groups[label]:
+            groups[label].append(name)
+
+    default_order = ["Cutting Area", "Assembly Area", "Warehouse Area"]
+    seen_labels = set(groups.keys())
+    out = []
+    for label in default_order:
+        names = sorted(groups.get(label, []))
+        out.append({"area": label, "count": len(names), "employees": names})
+        seen_labels.discard(label)
+    for label in sorted(seen_labels):
+        names = sorted(groups[label])
+        out.append({"area": label, "count": len(names), "employees": names})
+
+    return out
+
+
+@app.get("/api/activity/areas/{area_name:path}")
+def get_activity_by_area(area_name: str):
+    """Single area detail (optional; used by clients that fetch one area)."""
+    areas = get_activity_areas()
+    for a in areas:
+        if a["area"] == area_name or a["area"].replace(" ", "") == area_name.replace(" ", ""):
+            return a
+    raise HTTPException(status_code=404, detail="Area not found")
 
 
 # ================= REPORTS =================
