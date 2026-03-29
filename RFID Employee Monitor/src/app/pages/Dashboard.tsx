@@ -75,6 +75,7 @@ export function Dashboard() {
     switch (status) {
       case 'On Duty':  return <Badge className="bg-green-500 hover:bg-green-600">On Duty</Badge>;
       case 'Off Duty': return <Badge className="bg-blue-500 hover:bg-blue-600">Off Duty</Badge>;
+      case 'Day Off':  return <Badge className="bg-amber-500 hover:bg-amber-600">Day Off</Badge>;
       default:         return <Badge className="bg-gray-500 hover:bg-gray-600">Absent</Badge>;
     }
   };

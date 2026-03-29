@@ -142,6 +142,9 @@ from employee_db import (
     edit_employee,
     update_employee_status,
     reset_all_employee_statuses,
+    get_employee_day_offs,
+    add_employee_day_off,
+    remove_employee_day_off,
 )
 
 # ================= FASTAPI =================
@@ -307,6 +310,18 @@ class EditEmployeeData(BaseModel):
     department: Optional[str] = None
 
 
+class DayOffData(BaseModel):
+    date: str
+
+
+def _is_valid_iso_date(value: str) -> bool:
+    try:
+        datetime.strptime(value, "%Y-%m-%d")
+        return True
+    except Exception:
+        return False
+
+
 # ================= EMPLOYEES =================
 # NOTE: /register must come BEFORE /{emp_id} wildcard routes
 
@@ -359,6 +374,38 @@ def remove_employee(emp_id: str):
     return {"message": f"Employee {emp_id} deleted. Scan the card again to re-enroll its UID."}
 
 
+@app.post("/api/employees/{emp_id}/day-off")
+def add_day_off_for_employee(emp_id: str, payload: DayOffData):
+    employee = get_employee_by_id(emp_id)
+    if not employee:
+        raise HTTPException(status_code=404, detail="Employee not found")
+    if not _is_valid_iso_date(payload.date):
+        raise HTTPException(status_code=400, detail="Invalid date format. Use YYYY-MM-DD.")
+
+    dates = add_employee_day_off(emp_id, payload.date)
+    return {"employeeId": emp_id, "dayOffs": dates}
+
+
+@app.delete("/api/employees/{emp_id}/day-off")
+def remove_day_off_for_employee(emp_id: str, payload: DayOffData):
+    employee = get_employee_by_id(emp_id)
+    if not employee:
+        raise HTTPException(status_code=404, detail="Employee not found")
+    if not _is_valid_iso_date(payload.date):
+        raise HTTPException(status_code=400, detail="Invalid date format. Use YYYY-MM-DD.")
+
+    dates = remove_employee_day_off(emp_id, payload.date)
+    return {"employeeId": emp_id, "dayOffs": dates}
+
+
+@app.get("/api/employees/{emp_id}/day-offs")
+def get_day_offs_for_employee(emp_id: str):
+    employee = get_employee_by_id(emp_id)
+    if not employee:
+        raise HTTPException(status_code=404, detail="Employee not found")
+    return {"employeeId": emp_id, "dayOffs": get_employee_day_offs(emp_id)}
+
+
 # ================= PENDING UIDS =================
 
 @app.get("/api/pending-uids")
@@ -401,6 +448,17 @@ def rfid_scan(scan: RFIDScan):
     # -- Registered card — sounds play after we know clock-in vs clock-out --
     # NOTE: We intentionally allow scanning in ANY area/department so employees can
     # time-in/out across multiple departments in a single day.
+    if current_date in set(get_employee_day_offs(employee["id"])):
+        update_employee_status(employee["id"], "Day Off")
+        raise HTTPException(
+            status_code=403,
+            detail={
+                "code": "EMPLOYEE_DAY_OFF",
+                "message": f"{employee['name']} is scheduled for day off today.",
+                "employeeId": employee["id"],
+                "date": current_date,
+            },
+        )
 
     # ================= SNAPSHOT =================
     image_path = None
@@ -590,18 +648,16 @@ def daily_report(report_date: Optional[str] = None):
         earliest = emp_entries_sorted[0] if emp_entries_sorted else None
         latest = emp_entries_sorted[-1] if emp_entries_sorted else None
 
-        total_minutes = 0
-        has_any_total = False
-        for e in emp_entries:
-            mins, has = _parse_total_work_minutes(e.get("totalWorkHours"))
-            if has:
-                total_minutes += mins
-                has_any_total = True
-        total_hours = _format_minutes_to_hours(total_minutes) if has_any_total else None
+        total_hours, total_hours_by_department = _department_hours_breakdown(
+            emp_entries,
+            emp.get("department"),
+        )
 
         status = "Absent"
         if latest is not None:
             status = "On Duty" if latest.get("timeOut") is None else "Off Duty"
+        elif today in set(get_employee_day_offs(emp_id)):
+            status = "Day Off"
 
         details.append({
             "id":          emp_id,
@@ -611,6 +667,7 @@ def daily_report(report_date: Optional[str] = None):
             "time_in":     earliest.get("timeIn") if earliest else None,
             "time_out":    latest.get("timeOut") if latest else None,
             "total_hours": total_hours,
+            "total_hours_by_department": total_hours_by_department,
             "status":      status,
         })
 
@@ -677,6 +734,40 @@ def _format_minutes_to_hours(total_minutes: int) -> str:
     hours, remainder = divmod(max(0, int(total_minutes)), 60)
     minutes = remainder
     return f"{hours}h {minutes}m"
+
+
+def _entry_department(entry: dict, fallback_department: str | None) -> str:
+    """Resolve which department/area a scan entry belongs to."""
+    area = (entry.get("workArea") or entry.get("area") or "").strip()
+    if area:
+        return area
+    fallback = (fallback_department or "").strip()
+    return fallback or "Unknown"
+
+
+def _department_hours_breakdown(
+    entries: list[dict],
+    fallback_department: str | None,
+) -> tuple[str | None, dict[str, str] | None]:
+    """
+    Return total-hours breakdown by department for a set of entries.
+    Example: ("Assembly: 4h 0m, Cutting: 3h 0m", {"Assembly": "4h 0m", "Cutting": "3h 0m"})
+    """
+    minutes_by_department: dict[str, int] = {}
+    for e in entries:
+        mins, has = _parse_total_work_minutes(e.get("totalWorkHours"))
+        if not has:
+            continue
+        dept = _entry_department(e, fallback_department)
+        minutes_by_department[dept] = minutes_by_department.get(dept, 0) + mins
+
+    if not minutes_by_department:
+        return None, None
+
+    ordered = sorted(minutes_by_department.items(), key=lambda x: x[0])
+    as_map = {dept: _format_minutes_to_hours(mins) for dept, mins in ordered}
+    as_text = ", ".join(f"{dept}: {hours}" for dept, hours in as_map.items())
+    return as_text, as_map
 
 
 def _derive_work_department(entries: list[dict], fallback_department: str | None) -> str | None:
@@ -750,6 +841,11 @@ def _build_range_report(
         emp_id = emp["id"]
         emp_entries = entries_by_emp.get(emp_id, [])
         if not emp_entries:
+            has_day_off_in_range = any(
+                start_date <= datetime.strptime(day_off_str, "%Y-%m-%d").date() <= end_date
+                for day_off_str in get_employee_day_offs(emp_id)
+                if _is_valid_iso_date(day_off_str)
+            )
             details.append({
                 "id": emp_id,
                 "employee_id": emp_id,
@@ -758,7 +854,8 @@ def _build_range_report(
                 "time_in": None,
                 "time_out": None,
                 "total_hours": None,
-                "status": "Absent",
+                "total_hours_by_department": None,
+                "status": "Day Off" if has_day_off_in_range else "Absent",
             })
             continue
 
@@ -767,15 +864,10 @@ def _build_range_report(
         earliest = emp_entries_sorted[0]
         latest = emp_entries_sorted[-1]
 
-        total_minutes = 0
-        has_any_total = False
-        for e in emp_entries:
-            mins, has = _parse_total_work_minutes(e.get("totalWorkHours"))
-            if has:
-                total_minutes += mins
-                has_any_total = True
-
-        total_hours = _format_minutes_to_hours(total_minutes) if has_any_total else None
+        total_hours, total_hours_by_department = _department_hours_breakdown(
+            emp_entries,
+            emp.get("department"),
+        )
 
         latest_time_out = latest.get("timeOut")
         status = "On Duty" if latest_time_out is None else "Off Duty"
@@ -788,11 +880,12 @@ def _build_range_report(
             "time_in": earliest.get("timeIn"),
             "time_out": latest_time_out,
             "total_hours": total_hours,
+            "total_hours_by_department": total_hours_by_department,
             "status": status,
         })
         present_count += 1
 
-    absent_count = len(employees) - present_count
+    absent_count = len([d for d in details if d.get("status") == "Absent"])
 
     if attendance_days is None:
         # Fallback attendance: one bucket for whole range.
@@ -807,7 +900,13 @@ def _build_range_report(
                 if e.get("date") == d.strftime("%Y-%m-%d")
             }
             present = len([emp for emp in employees if emp["id"] in ids_on_day])
-            absent = len(employees) - present
+            day_off = sum(
+                1
+                for emp in employees
+                if d.strftime("%Y-%m-%d") in set(get_employee_day_offs(emp["id"]))
+                and emp["id"] not in ids_on_day
+            )
+            absent = len(employees) - present - day_off
             label = attendance_bucket_label(d) if attendance_bucket_label else d.strftime("%a")
             attendance_chart.append({"day": label, "present": present, "absent": absent})
 
@@ -905,7 +1004,17 @@ def monthly_report(year: int, month: int):
             and b_start <= datetime.strptime(e.get("date"), "%Y-%m-%d").date() <= b_end
         }
         present = len([emp for emp in employees if emp["id"] in ids_in_bucket])
-        absent = len(employees) - present
+        day_off = 0
+        for emp in employees:
+            if emp["id"] in ids_in_bucket:
+                continue
+            if any(
+                b_start <= datetime.strptime(day_off_str, "%Y-%m-%d").date() <= b_end
+                for day_off_str in get_employee_day_offs(emp["id"])
+                if _is_valid_iso_date(day_off_str)
+            ):
+                day_off += 1
+        absent = len(employees) - present - day_off
         attendance_chart.append({"day": f"Week {i}", "present": present, "absent": absent})
 
     report = _build_range_report(

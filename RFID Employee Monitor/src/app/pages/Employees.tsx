@@ -23,7 +23,8 @@ import {
   AlertDialogTitle,
 } from '@/app/components/ui/alert-dialog';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/app/components/ui/dialog';
-import { Users, Trash2, Pencil, UserPlus, Loader2 } from 'lucide-react';
+import { Calendar } from '@/app/components/ui/calendar';
+import { Users, Trash2, Pencil, UserPlus, Loader2, CalendarDays, X } from 'lucide-react';
 
 const API = 'http://127.0.0.1:8000/api';
 
@@ -49,6 +50,11 @@ export function Employees() {
   const [regName, setRegName]           = useState('');
   const [regDept, setRegDept]           = useState('Cutting');
   const [registering, setRegistering]   = useState(false);
+  const [dayOffTarget, setDayOffTarget] = useState<any | null>(null);
+  const [selectedDayOffDates, setSelectedDayOffDates] = useState<Date[]>([]);
+  const [dayOffs, setDayOffs]           = useState<string[]>([]);
+  const [dayOffLoading, setDayOffLoading] = useState(false);
+  const [dayOffSaving, setDayOffSaving]   = useState(false);
 
   // ── Error/success toast ──────────────────────────────────────────────────
   const [toast, setToast] = useState<{ msg: string; type: 'success' | 'error' } | null>(null);
@@ -69,6 +75,13 @@ const fetchEmployees = async () => {
     console.error('Failed to fetch employees:', err);
   }
 };
+
+  const toIsoDate = (value: Date) => {
+    const year = value.getFullYear();
+    const month = `${value.getMonth() + 1}`.padStart(2, '0');
+    const day = `${value.getDate()}`.padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  };
 
   const fetchPending = async () => {
     try {
@@ -206,10 +219,83 @@ const fetchEmployees = async () => {
     }
   };
 
+  const openDayOffDialog = async (emp: any) => {
+    setDayOffTarget(emp);
+    setSelectedDayOffDates([]);
+    setDayOffLoading(true);
+    try {
+      const res = await fetch(`${API}/employees/${emp.id}/day-offs`);
+      const data = await res.json();
+      setDayOffs(Array.isArray(data?.dayOffs) ? data.dayOffs : []);
+    } catch (err) {
+      console.error('Failed to fetch day offs:', err);
+      setDayOffs([]);
+      showToast('Failed to load day offs.', 'error');
+    } finally {
+      setDayOffLoading(false);
+    }
+  };
+
+  const addDayOffs = async () => {
+    if (!dayOffTarget || selectedDayOffDates.length === 0) return;
+    setDayOffSaving(true);
+    try {
+      const uniqueIsoDates = Array.from(new Set(selectedDayOffDates.map((d) => toIsoDate(d))));
+
+      for (const date of uniqueIsoDates) {
+        const res = await fetch(`${API}/employees/${dayOffTarget.id}/day-off`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ date }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data.detail || `Failed to add ${date}`);
+      }
+
+      const refreshRes = await fetch(`${API}/employees/${dayOffTarget.id}/day-offs`);
+      const refreshData = await refreshRes.json().catch(() => ({}));
+      setDayOffs(Array.isArray(refreshData?.dayOffs) ? refreshData.dayOffs : []);
+      setSelectedDayOffDates([]);
+      showToast(`${uniqueIsoDates.length} day off date(s) scheduled successfully.`);
+    } catch (err: any) {
+      showToast(err.message || 'Failed to add day offs.', 'error');
+    } finally {
+      setDayOffSaving(false);
+    }
+  };
+
+  const removeDayOff = async (date: string) => {
+    if (!dayOffTarget) return;
+    setDayOffSaving(true);
+    try {
+      const res = await fetch(`${API}/employees/${dayOffTarget.id}/day-off`, {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ date }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.detail || 'Failed to remove day off');
+      setDayOffs(Array.isArray(data?.dayOffs) ? data.dayOffs : []);
+      showToast('Day off removed.');
+    } catch (err: any) {
+      showToast(err.message || 'Failed to remove day off.', 'error');
+    } finally {
+      setDayOffSaving(false);
+    }
+  };
+
+  const todayIso = toIsoDate(new Date());
+  const upcomingDayOffs = dayOffs
+    .filter((d) => d >= todayIso)
+    .sort((a, b) => a.localeCompare(b));
+  const selectedIsoDates = Array.from(new Set(selectedDayOffDates.map((d) => toIsoDate(d))))
+    .sort((a, b) => a.localeCompare(b));
+
   const getStatusBadge = (status: string) => {
     switch (status) {
       case 'On Duty':  return <Badge className="bg-green-500 hover:bg-green-600">On Duty</Badge>;
       case 'Off Duty': return <Badge className="bg-blue-500 hover:bg-blue-600">Off Duty</Badge>;
+      case 'Day Off':  return <Badge className="bg-amber-500 hover:bg-amber-600">Day Off</Badge>;
       default:         return <Badge className="bg-gray-500 hover:bg-gray-600">Absent</Badge>;
     }
   };
@@ -340,6 +426,14 @@ const fetchEmployees = async () => {
                     <TableCell>{getStatusBadge(emp.status)}</TableCell>
                     <TableCell className="text-right">
                       <div className="flex justify-end gap-2">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="border-amber-300 text-amber-700 hover:bg-amber-50"
+                          onClick={() => openDayOffDialog(emp)}
+                        >
+                          Manage Day Offs
+                        </Button>
                         <Button
                           size="sm"
                           variant="outline"
@@ -501,6 +595,123 @@ const fetchEmployees = async () => {
                 <><Loader2 className="w-4 h-4 animate-spin mr-2" /> Registering…</>
               ) : (
                 'Register Employee'
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ══════════════ DAY OFF DIALOG ══════════════ */}
+      <Dialog open={!!dayOffTarget} onOpenChange={(open) => !open && setDayOffTarget(null)}>
+        <DialogContent className="max-h-[90vh] max-w-3xl overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Manage Day Offs — {dayOffTarget?.name}</DialogTitle>
+          </DialogHeader>
+
+          <div className="space-y-4 py-2">
+            <div className="rounded-2xl border border-[#2E3192]/10 bg-gradient-to-br from-white to-[#f8fbff] p-4">
+              <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+                <div className="flex items-center gap-2">
+                  <CalendarDays className="h-4 w-4 text-[#2E3192]" />
+                  <Label className="text-[#2E3192]">Select day off dates</Label>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Badge className="bg-[#2E3192] hover:bg-[#2E3192]">
+                    {selectedIsoDates.length} selected
+                  </Badge>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="h-8"
+                    onClick={() => setSelectedDayOffDates([])}
+                    disabled={dayOffSaving || selectedIsoDates.length === 0}
+                  >
+                    Clear selection
+                  </Button>
+                </div>
+              </div>
+              <div className="grid gap-4 md:grid-cols-[1fr,260px]">
+                <div className="flex justify-center rounded-2xl border border-[#2E3192]/10 bg-gradient-to-b from-white to-[#f9fbff] p-4 shadow-sm">
+                  <Calendar
+                    mode="multiple"
+                    selected={selectedDayOffDates}
+                    onSelect={(dates) => setSelectedDayOffDates(dates ?? [])}
+                    disabled={dayOffSaving}
+                    className="rounded-xl border border-[#2E3192]/10 bg-white p-3 shadow-sm [&_.rdp-months]:justify-center [&_.rdp-month]:mx-auto [&_.rdp-caption]:justify-center [&_.rdp-caption_label]:text-base [&_.rdp-caption_label]:font-semibold [&_.rdp-head_row]:justify-center [&_.rdp-row]:justify-center [&_.rdp-table]:mx-auto [&_.rdp-nav]:gap-2 [&_.rdp-button]:rounded-lg"
+                  />
+                </div>
+                <div className="rounded-xl border border-[#2E3192]/10 bg-white p-3">
+                  <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-[#5A5FB8]">
+                    Selected dates
+                  </p>
+                  {selectedIsoDates.length === 0 ? (
+                    <p className="text-sm text-[#5A5FB8]">Pick one or more dates on the calendar.</p>
+                  ) : (
+                    <div className="max-h-56 space-y-2 overflow-y-auto pr-1">
+                      {selectedIsoDates.map((date) => (
+                        <div key={date} className="flex items-center justify-between rounded-lg border border-[#2E3192]/10 bg-[#f8fbff] px-2 py-1.5">
+                          <span className="font-mono text-xs text-[#2E3192]">{date}</span>
+                          <Button
+                            size="icon"
+                            variant="ghost"
+                            className="h-6 w-6 text-[#5A5FB8] hover:bg-[#eaf1ff] hover:text-[#2E3192]"
+                            onClick={() => setSelectedDayOffDates((prev) => prev.filter((d) => toIsoDate(d) !== date))}
+                            disabled={dayOffSaving}
+                          >
+                            <X className="h-3.5 w-3.5" />
+                          </Button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            <div className="rounded-xl border border-amber-200/70 bg-amber-50/40 p-3">
+              <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-amber-800">
+                Upcoming scheduled day offs ({upcomingDayOffs.length})
+              </p>
+              {dayOffLoading ? (
+                <div className="flex items-center gap-2 text-sm text-amber-800">
+                  <Loader2 className="h-4 w-4 animate-spin" /> Loading...
+                </div>
+              ) : upcomingDayOffs.length === 0 ? (
+                <p className="text-sm text-amber-800/80">No upcoming day offs.</p>
+              ) : (
+                <div className="max-h-52 space-y-2 overflow-y-auto pr-1">
+                  {upcomingDayOffs.map((date) => (
+                    <div key={date} className="flex items-center justify-between rounded-lg border border-amber-200 bg-white px-3 py-2">
+                      <span className="text-sm font-medium text-amber-900">{date}</span>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="h-8 border-red-200 text-red-600 hover:bg-red-50"
+                        disabled={dayOffSaving}
+                        onClick={() => removeDayOff(date)}
+                      >
+                        Remove
+                      </Button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+
+          <DialogFooter className="gap-2">
+            <Button variant="outline" onClick={() => setDayOffTarget(null)} disabled={dayOffSaving}>
+              Close
+            </Button>
+            <Button
+              className="bg-amber-500 hover:bg-amber-600"
+              onClick={addDayOffs}
+              disabled={dayOffSaving || selectedIsoDates.length === 0}
+            >
+              {dayOffSaving ? (
+                <><Loader2 className="w-4 h-4 animate-spin mr-2" /> Saving...</>
+              ) : (
+                `Add ${selectedIsoDates.length > 0 ? selectedIsoDates.length : ''} Selected Day Off${selectedIsoDates.length === 1 ? '' : 's'}`
               )}
             </Button>
           </DialogFooter>

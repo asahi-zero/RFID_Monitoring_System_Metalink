@@ -3,6 +3,7 @@ import os
 
 DB_FILE       = os.path.join(os.path.dirname(__file__), "employees.json")
 RESERVED_FILE = os.path.join(os.path.dirname(__file__), "reserved_uids.json")
+DAY_OFFS_FILE = os.path.join(os.path.dirname(__file__), "day_offs.json")
 
 
 # ── reserved_uids: persisted to disk so deletes survive restarts ─────────────
@@ -37,6 +38,35 @@ def _load() -> list[dict]:
 
 def _save(data: list[dict]) -> None:
     with open(DB_FILE, "w") as f:
+        json.dump(data, f, indent=2)
+
+
+def _load_day_offs() -> dict[str, list[str]]:
+    if not os.path.exists(DAY_OFFS_FILE):
+        return {}
+    try:
+        with open(DAY_OFFS_FILE, "r") as f:
+            raw = json.load(f)
+    except Exception:
+        return {}
+
+    if not isinstance(raw, dict):
+        return {}
+
+    sanitized: dict[str, list[str]] = {}
+    for emp_id, dates in raw.items():
+        if not isinstance(emp_id, str):
+            continue
+        if not isinstance(dates, list):
+            continue
+        cleaned_dates = sorted({str(d).strip() for d in dates if str(d).strip()})
+        if cleaned_dates:
+            sanitized[emp_id] = cleaned_dates
+    return sanitized
+
+
+def _save_day_offs(data: dict[str, list[str]]) -> None:
+    with open(DAY_OFFS_FILE, "w") as f:
         json.dump(data, f, indent=2)
 
 
@@ -94,6 +124,11 @@ def delete_employee(emp_id: str) -> dict | None:
     reserved_uids.add(target["rfidUid"])
     _save_reserved(reserved_uids)
 
+    day_offs = _load_day_offs()
+    if emp_id in day_offs:
+        day_offs.pop(emp_id, None)
+        _save_day_offs(day_offs)
+
     _save([e for e in employees if e["id"] != emp_id])
     return target
 
@@ -131,3 +166,30 @@ def reset_all_employee_statuses(status: str = "Absent") -> None:
             changed = True
     if changed:
         _save(employees)
+
+
+def get_employee_day_offs(emp_id: str) -> list[str]:
+    day_offs = _load_day_offs()
+    return day_offs.get(emp_id, [])
+
+
+def add_employee_day_off(emp_id: str, day_off_date: str) -> list[str]:
+    day_offs = _load_day_offs()
+    emp_dates = set(day_offs.get(emp_id, []))
+    emp_dates.add(day_off_date)
+    day_offs[emp_id] = sorted(emp_dates)
+    _save_day_offs(day_offs)
+    return day_offs[emp_id]
+
+
+def remove_employee_day_off(emp_id: str, day_off_date: str) -> list[str]:
+    day_offs = _load_day_offs()
+    emp_dates = set(day_offs.get(emp_id, []))
+    if day_off_date in emp_dates:
+        emp_dates.remove(day_off_date)
+    if emp_dates:
+        day_offs[emp_id] = sorted(emp_dates)
+    else:
+        day_offs.pop(emp_id, None)
+    _save_day_offs(day_offs)
+    return day_offs.get(emp_id, [])
