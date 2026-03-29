@@ -193,10 +193,47 @@ pending_uids: dict[str, str] = {}  # uid -> first_seen_time
 
 # ================= CAMERA =================
 if CAMERA_AVAILABLE:
-    camera      = cv2.VideoCapture(0)
+    camera = None
     camera_lock = threading.Lock()
 
+    def _init_camera():
+        """
+        Lazily initialize the camera and auto-detect a working index.
+        This avoids being stuck on an index that is not available
+        (e.g. when switching from a USB camera back to a laptop camera).
+        """
+        global camera, CAMERA_AVAILABLE
+
+        # If we already have an open camera, keep using it.
+        if camera is not None and camera.isOpened():
+            return
+
+        # Try a few common indices to find an available camera.
+        for idx in range(3):
+            try:
+                cap = cv2.VideoCapture(idx)
+            except Exception:
+                cap = None
+
+            if cap is not None and cap.isOpened():
+                camera = cap
+                print(f"[CAMERA] Using device index {idx}")
+                return
+
+        # If we get here, no camera was found.
+        print("[CAMERA] No available camera devices found. Disabling camera features.")
+        CAMERA_AVAILABLE = False
+        camera = None
+
     def grab_snapshot_frame():
+        # Ensure camera is initialized before attempting to read.
+        if not CAMERA_AVAILABLE:
+            return False, None
+
+        _init_camera()
+        if not CAMERA_AVAILABLE or camera is None:
+            return False, None
+
         with camera_lock:
             # Grab a couple of frames to reduce stale buffering and improve snapshot timeliness.
             camera.grab()
@@ -211,16 +248,31 @@ if CAMERA_AVAILABLE:
         return success, frame if success else None
 
     def generate_frames():
+        import time
         while True:
+            if not CAMERA_AVAILABLE:
+                time.sleep(0.5)
+                yield b""
+                continue
+
+            _init_camera()
+            if not CAMERA_AVAILABLE or camera is None:
+                time.sleep(0.5)
+                yield b""
+                continue
+
             with camera_lock:
                 success, frame = camera.read()
+
             if not success:
-                import time
                 time.sleep(0.05)
                 continue
-            _, buffer = cv2.imencode('.jpg', frame)
-            yield (b'--frame\r\n'
-                   b'Content-Type: image/jpeg\r\n\r\n' + buffer.tobytes() + b'\r\n')
+
+            _, buffer = cv2.imencode(".jpg", frame)
+            yield (
+                b"--frame\r\n"
+                b"Content-Type: image/jpeg\r\n\r\n" + buffer.tobytes() + b"\r\n"
+            )
 else:
     def grab_snapshot_frame():
         return False, None
@@ -229,7 +281,7 @@ else:
         import time
         while True:
             time.sleep(1)
-            yield b''
+            yield b""
 
 
 @app.get("/api/camera")
@@ -555,7 +607,7 @@ def daily_report(report_date: Optional[str] = None):
             "id":          emp_id,
             "employee_id": emp_id,
             "name":        emp["name"],
-            "department":  emp["department"],
+            "department":  _derive_work_department(emp_entries, emp.get("department")),
             "time_in":     earliest.get("timeIn") if earliest else None,
             "time_out":    latest.get("timeOut") if latest else None,
             "total_hours": total_hours,
@@ -625,6 +677,32 @@ def _format_minutes_to_hours(total_minutes: int) -> str:
     hours, remainder = divmod(max(0, int(total_minutes)), 60)
     minutes = remainder
     return f"{hours}h {minutes}m"
+
+
+def _derive_work_department(entries: list[dict], fallback_department: str | None) -> str | None:
+    """
+    Determine the department/area to display in reports based on where scans occurred.
+    - If there are any workArea/area values, prefer those.
+    - If all scans are in a single area, return that area.
+    - If multiple distinct areas exist, return a comma-separated list.
+    - If no scan areas are found, fall back to the employee's home department.
+    """
+    if not entries:
+        return fallback_department
+
+    areas: set[str] = set()
+    for e in entries:
+        area = (e.get("workArea") or e.get("area") or "").strip()
+        if area:
+            areas.add(area)
+
+    if not areas:
+        return fallback_department
+
+    if len(areas) == 1:
+        return next(iter(areas))
+
+    return ", ".join(sorted(areas))
 
 
 def _build_range_report(
@@ -706,7 +784,7 @@ def _build_range_report(
             "id": emp_id,
             "employee_id": emp_id,
             "name": emp.get("name"),
-            "department": emp.get("department"),
+            "department": _derive_work_department(emp_entries, emp.get("department")),
             "time_in": earliest.get("timeIn"),
             "time_out": latest_time_out,
             "total_hours": total_hours,
