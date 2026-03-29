@@ -8,10 +8,7 @@ import {
   Table, TableBody, TableCell, TableHead,
   TableHeader, TableRow,
 } from '@/app/components/ui/table';
-import {
-  Select, SelectContent, SelectItem,
-  SelectTrigger, SelectValue,
-} from '@/app/components/ui/select';
+import { Checkbox } from '@/app/components/ui/checkbox';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -42,13 +39,13 @@ export function Employees() {
   // ── Edit dialog ──────────────────────────────────────────────────────────
   const [editTarget, setEditTarget]     = useState<any | null>(null);
   const [editName, setEditName]         = useState('');
-  const [editDept, setEditDept]         = useState('');
+  const [editDepts, setEditDepts]       = useState<string[]>(['Cutting']);
   const [saving, setSaving]             = useState(false);
 
   // ── Register dialog ──────────────────────────────────────────────────────
   const [registerUid, setRegisterUid]   = useState<string | null>(null);
   const [regName, setRegName]           = useState('');
-  const [regDept, setRegDept]           = useState('Cutting');
+  const [regDepts, setRegDepts]         = useState<string[]>(['Cutting']);
   const [registering, setRegistering]   = useState(false);
   const [dayOffTarget, setDayOffTarget] = useState<any | null>(null);
   const [selectedDayOffDates, setSelectedDayOffDates] = useState<Date[]>([]);
@@ -137,7 +134,13 @@ const fetchEmployees = async () => {
   const openEdit = (emp: any) => {
     setEditTarget(emp);
     setEditName(emp.name);
-    setEditDept(emp.department);
+    setEditDepts(
+      Array.isArray(emp.departments) && emp.departments.length > 0
+        ? emp.departments
+        : emp.department
+          ? [emp.department]
+          : ['Cutting']
+    );
   };
 
   const handleEditSave = async () => {
@@ -147,7 +150,7 @@ const fetchEmployees = async () => {
       const res = await fetch(`${API}/employees/${editTarget.id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: editName.trim(), department: editDept }),
+        body: JSON.stringify({ name: editName.trim(), departments: editDepts }),
       });
 
       if (!res.ok) {
@@ -159,7 +162,12 @@ const fetchEmployees = async () => {
       setEmployees(prev =>
         prev.map(e =>
           e.id === editTarget.id
-            ? { ...e, name: editName.trim(), department: editDept }
+            ? {
+                ...e,
+                name: editName.trim(),
+                department: editDepts[0],
+                departments: editDepts,
+              }
             : e
         )
       );
@@ -183,7 +191,7 @@ const fetchEmployees = async () => {
         body: JSON.stringify({
           rfidUid:    registerUid,
           name:       regName.trim(),
-          department: regDept,
+          departments: regDepts,
         }),
       });
 
@@ -205,7 +213,7 @@ const fetchEmployees = async () => {
       setRegistering(false);
       setRegisterUid(null);
       setRegName('');
-      setRegDept('Cutting');
+      setRegDepts(['Cutting']);
     }
   };
 
@@ -369,7 +377,7 @@ const fetchEmployees = async () => {
                     onClick={() => {
                       setRegisterUid(p.rfidUid);
                       setRegName('');
-                      setRegDept('Cutting');
+                      setRegDepts(['Cutting']);
                     }}
                   >
                     Register
@@ -421,7 +429,11 @@ const fetchEmployees = async () => {
                   <TableRow key={emp.id}>
                     <TableCell className="font-medium">{emp.id}</TableCell>
                     <TableCell>{emp.name}</TableCell>
-                    <TableCell>{emp.department}</TableCell>
+                    <TableCell>
+                      {Array.isArray(emp.departments) && emp.departments.length > 0
+                        ? emp.departments.join(', ')
+                        : emp.department}
+                    </TableCell>
                     <TableCell className="font-mono text-xs text-gray-500">{emp.rfidUid || '—'}</TableCell>
                     <TableCell>{getStatusBadge(emp.status)}</TableCell>
                     <TableCell className="text-right">
@@ -510,17 +522,22 @@ const fetchEmployees = async () => {
               />
             </div>
             <div>
-              <Label htmlFor="edit-dept">Department</Label>
-              <Select value={editDept} onValueChange={setEditDept}>
-                <SelectTrigger id="edit-dept" className="mt-1">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {DEPARTMENTS.map(d => (
-                    <SelectItem key={d} value={d}>{d}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <Label>Assigned Departments</Label>
+              <div className="mt-2 space-y-2">
+                {DEPARTMENTS.map((d) => (
+                  <label key={d} className="flex items-center gap-2 text-sm">
+                    <Checkbox
+                      checked={editDepts.includes(d)}
+                      onCheckedChange={(checked) =>
+                        setEditDepts((prev) =>
+                          checked ? Array.from(new Set([...prev, d])) : prev.filter((x) => x !== d)
+                        )
+                      }
+                    />
+                    {d}
+                  </label>
+                ))}
+              </div>
             </div>
           </div>
 
@@ -531,7 +548,7 @@ const fetchEmployees = async () => {
             <Button
               className="bg-[#2E3192] hover:bg-[#252A7A]"
               onClick={handleEditSave}
-              disabled={saving || !editName.trim()}
+              disabled={saving || !editName.trim() || editDepts.length === 0}
             >
               {saving ? (
                 <><Loader2 className="w-4 h-4 animate-spin mr-2" /> Saving…</>
@@ -568,17 +585,22 @@ const fetchEmployees = async () => {
               />
             </div>
             <div>
-              <Label htmlFor="reg-dept">Department</Label>
-              <Select value={regDept} onValueChange={setRegDept}>
-                <SelectTrigger id="reg-dept" className="mt-1">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {DEPARTMENTS.map(d => (
-                    <SelectItem key={d} value={d}>{d}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <Label>Assigned Departments</Label>
+              <div className="mt-2 space-y-2">
+                {DEPARTMENTS.map((d) => (
+                  <label key={d} className="flex items-center gap-2 text-sm">
+                    <Checkbox
+                      checked={regDepts.includes(d)}
+                      onCheckedChange={(checked) =>
+                        setRegDepts((prev) =>
+                          checked ? Array.from(new Set([...prev, d])) : prev.filter((x) => x !== d)
+                        )
+                      }
+                    />
+                    {d}
+                  </label>
+                ))}
+              </div>
             </div>
           </div>
 
@@ -589,7 +611,7 @@ const fetchEmployees = async () => {
             <Button
               className="bg-[#2E3192] hover:bg-[#252A7A]"
               onClick={handleRegister}
-              disabled={registering || !regName.trim()}
+              disabled={registering || !regName.trim() || regDepts.length === 0}
             >
               {registering ? (
                 <><Loader2 className="w-4 h-4 animate-spin mr-2" /> Registering…</>

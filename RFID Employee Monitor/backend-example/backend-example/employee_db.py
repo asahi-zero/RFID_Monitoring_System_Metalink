@@ -88,7 +88,7 @@ def is_uid_reserved(uid: str) -> bool:
     return uid in reserved_uids
 
 
-def add_employee(name: str, department: str, rfid_uid: str) -> dict:
+def add_employee(name: str, departments: list[str], rfid_uid: str) -> dict:
     employees = _load()
     existing_ids = {e["id"] for e in employees}
     counter = len(employees) + 1
@@ -97,10 +97,14 @@ def add_employee(name: str, department: str, rfid_uid: str) -> dict:
         counter += 1
         new_id = f"EMP{str(counter).zfill(3)}"
 
+    assigned_departments = [d.strip() for d in departments if str(d).strip()]
+    primary_department = assigned_departments[0] if assigned_departments else "Cutting"
+
     employee = {
         "id":         new_id,
         "name":       name,
-        "department": department,
+        "department": primary_department,
+        "departments": assigned_departments or [primary_department],
         "status":     "Absent",
         "rfidUid":    rfid_uid,
     }
@@ -133,14 +137,25 @@ def delete_employee(emp_id: str) -> dict | None:
     return target
 
 
-def edit_employee(emp_id: str, name: str | None, department: str | None) -> dict | None:
+def edit_employee(
+    emp_id: str,
+    name: str | None,
+    department: str | None,
+    departments: list[str] | None = None,
+) -> dict | None:
     employees = _load()
     for emp in employees:
         if emp["id"] == emp_id:
             if name is not None:
                 emp["name"] = name.strip()
-            if department is not None:
+            if departments is not None:
+                cleaned_departments = [d.strip() for d in departments if str(d).strip()]
+                if cleaned_departments:
+                    emp["departments"] = cleaned_departments
+                    emp["department"] = cleaned_departments[0]
+            elif department is not None:
                 emp["department"] = department
+                emp["departments"] = [department]
             _save(employees)
             return emp
     return None

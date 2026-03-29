@@ -302,12 +302,14 @@ class RFIDScan(BaseModel):
 class NewEmployeeData(BaseModel):
     rfidUid: str
     name: str
-    department: str
+    department: Optional[str] = None
+    departments: Optional[list[str]] = None
 
 
 class EditEmployeeData(BaseModel):
     name: Optional[str] = None
     department: Optional[str] = None
+    departments: Optional[list[str]] = None
 
 
 class DayOffData(BaseModel):
@@ -322,20 +324,62 @@ def _is_valid_iso_date(value: str) -> bool:
         return False
 
 
+VALID_DEPARTMENTS = {"Cutting", "Assembly", "Warehouse"}
+
+
+def _normalize_assigned_departments(
+    departments: Optional[list[str]] = None,
+    department: Optional[str] = None,
+) -> list[str]:
+    """
+    Normalize incoming single/multi department payloads.
+    Returns unique departments preserving original order.
+    """
+    raw: list[str] = []
+    if departments:
+        raw.extend([str(d).strip() for d in departments if str(d).strip()])
+    if department and str(department).strip():
+        raw.append(str(department).strip())
+
+    unique: list[str] = []
+    seen: set[str] = set()
+    for d in raw:
+        if d in seen:
+            continue
+        seen.add(d)
+        unique.append(d)
+    return unique
+
+
+def _employee_assigned_departments(employee: dict) -> list[str]:
+    """
+    Read assigned departments from employee record with legacy fallback.
+    """
+    if isinstance(employee.get("departments"), list):
+        cleaned = [str(d).strip() for d in employee["departments"] if str(d).strip()]
+        if cleaned:
+            return cleaned
+    legacy = str(employee.get("department") or "").strip()
+    return [legacy] if legacy else []
+
+
 # ================= EMPLOYEES =================
 # NOTE: /register must come BEFORE /{emp_id} wildcard routes
 
 @app.post("/api/employees/register")
 def register_new_employee(data: NewEmployeeData):   # ✅ FIX 1: restored Pydantic type annotation
     """Register a new employee from a pending unregistered RFID UID."""
-    if data.department not in ("Cutting", "Assembly", "Warehouse"):
-        raise HTTPException(status_code=400, detail="Invalid department.")
+    assigned_departments = _normalize_assigned_departments(data.departments, data.department)
+    if not assigned_departments:
+        raise HTTPException(status_code=400, detail="Select at least one department.")
+    if any(d not in VALID_DEPARTMENTS for d in assigned_departments):
+        raise HTTPException(status_code=400, detail="Invalid department selection.")
 
     existing = get_employee_by_uid(data.rfidUid)
     if existing:
         raise HTTPException(status_code=400, detail="RFID UID already registered to an employee.")
 
-    employee = add_employee(data.name, data.department, data.rfidUid)
+    employee = add_employee(data.name, assigned_departments, data.rfidUid)
     pending_uids.pop(data.rfidUid, None)
     return {"message": "Employee registered successfully", "employee": employee}
 
@@ -348,9 +392,23 @@ def get_employees():
 @app.patch("/api/employees/{emp_id}")
 def edit_employee_route(emp_id: str, data: EditEmployeeData):   # ✅ FIX 1: restored type annotation
     """Edit an employee's name and/or department."""
-    if data.department is not None and data.department not in ("Cutting", "Assembly", "Warehouse"):
-        raise HTTPException(status_code=400, detail="Invalid department.")
-    emp = edit_employee(emp_id, name=data.name, department=data.department)
+    assigned_departments = (
+        _normalize_assigned_departments(data.departments, data.department)
+        if data.departments is not None or data.department is not None
+        else None
+    )
+    if assigned_departments is not None:
+        if not assigned_departments:
+            raise HTTPException(status_code=400, detail="Select at least one department.")
+        if any(d not in VALID_DEPARTMENTS for d in assigned_departments):
+            raise HTTPException(status_code=400, detail="Invalid department selection.")
+
+    emp = edit_employee(
+        emp_id,
+        name=data.name,
+        department=data.department,
+        departments=assigned_departments,
+    )
     if not emp:
         raise HTTPException(status_code=404, detail="Employee not found")
     return {"message": "Employee updated", "employee": emp}
@@ -445,9 +503,30 @@ def rfid_scan(scan: RFIDScan):
             }
         )
 
-    # -- Registered card — sounds play after we know clock-in vs clock-out --
-    # NOTE: We intentionally allow scanning in ANY area/department so employees can
-    # time-in/out across multiple departments in a single day.
+    # -- Registered card — validate access by assigned departments --
+    scan_area = (scan.area or "").strip()
+    assigned_departments = _employee_assigned_departments(employee)
+    if scan_area:
+        if scan_area not in VALID_DEPARTMENTS:
+            raise HTTPException(
+                status_code=400,
+                detail={
+                    "code": "INVALID_SCAN_AREA",
+                    "message": f"Invalid scan area '{scan_area}'.",
+                    "allowedAreas": sorted(VALID_DEPARTMENTS),
+                },
+            )
+        if scan_area not in assigned_departments:
+            raise HTTPException(
+                status_code=403,
+                detail={
+                    "code": "UNAUTHORIZED_AREA",
+                    "message": f"{employee['name']} is not assigned to {scan_area}.",
+                    "assignedDepartments": assigned_departments,
+                    "requestedArea": scan_area,
+                },
+            )
+
     if current_date in set(get_employee_day_offs(employee["id"])):
         update_employee_status(employee["id"], "Day Off")
         raise HTTPException(
@@ -522,9 +601,10 @@ def rfid_scan(scan: RFIDScan):
             "id":             employee["id"],
             "name":           employee["name"],
             "department":     employee["department"],
-            "workArea":       (scan.area or "").strip() or employee["department"],
+            "departments":    assigned_departments,
+            "workArea":       scan_area or employee["department"],
             "status":         "On Duty",
-            "area":           scan.area,
+            "area":           scan_area,
             "date":           current_date,
             "timeIn":         current_time,
             "timeOut":        None,
