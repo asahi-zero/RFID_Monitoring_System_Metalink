@@ -215,8 +215,8 @@ export function Dashboard() {
               <TableRow>
                 <TableHead>ID</TableHead>
                 <TableHead>Name</TableHead>
-                <TableHead>Home Dept.</TableHead>
-                <TableHead>Work Area</TableHead>
+                <TableHead>Department</TableHead>
+                <TableHead>Current Work Area</TableHead>
                 <TableHead>Status</TableHead>
                 <TableHead>Date</TableHead>
                 <TableHead>Time In</TableHead>
@@ -229,7 +229,7 @@ export function Dashboard() {
             <TableBody>
               {filteredLogs.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={9} className="text-center text-gray-400 py-8">
+                  <TableCell colSpan={10} className="text-center text-gray-400 py-8">
                     {searchQuery ? 'No results match your search.' : 'No RFID logs yet.'}
                   </TableCell>
                 </TableRow>
@@ -238,7 +238,11 @@ export function Dashboard() {
                   <TableRow key={index}>
                     <TableCell>{log.id ?? "—"}</TableCell>
                     <TableCell>{log.name ?? "—"}</TableCell>
-                    <TableCell>{log.department ?? "—"}</TableCell>
+                    <TableCell>
+                      {Array.isArray(log.departments) && log.departments.length > 0
+                        ? log.departments.join(', ')
+                        : log.department ?? "—"}
+                    </TableCell>
                     <TableCell>{log.workArea ?? log.area ?? "—"}</TableCell>
 
                     {/* Status comes directly from the log entry — always accurate */}

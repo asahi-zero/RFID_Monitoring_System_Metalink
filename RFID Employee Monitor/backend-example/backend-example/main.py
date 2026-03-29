@@ -567,17 +567,28 @@ def rfid_scan(scan: RFIDScan):
             break
 
     if existing_scan:
-        # Second scan = Clock Out -> Off Duty
+        # If employee scans a different assigned area, close current session and
+        # immediately start a new one in the new area.
+        current_work_area = (
+            (existing_scan.get("workArea") or existing_scan.get("area") or "").strip()
+            or employee["department"]
+        )
+        target_work_area = scan_area or current_work_area
+        is_department_transfer = (
+            bool(target_work_area)
+            and bool(current_work_area)
+            and target_work_area != current_work_area
+        )
+
         existing_scan["timeOut"] = current_time
-        time_in_dt  = datetime.strptime(existing_scan["timeIn"], "%H:%M:%S")
+        time_in_dt = datetime.strptime(existing_scan["timeIn"], "%H:%M:%S")
         time_out_dt = datetime.strptime(current_time, "%H:%M:%S")
         delta = time_out_dt - time_in_dt
         total_seconds = max(0, int(delta.total_seconds()))
         hours, remainder = divmod(total_seconds, 3600)
-        minutes, _       = divmod(remainder, 60)
+        minutes, _ = divmod(remainder, 60)
         existing_scan["totalWorkHours"] = f"{hours}h {minutes}m"
         existing_scan["status"] = "Off Duty"
-        update_employee_status(employee["id"], "Off Duty")
 
         # Keep session list in sync if this clock-in happened this runtime.
         for session_entry in reversed(rfid_scan_history):
@@ -592,6 +603,35 @@ def rfid_scan(scan: RFIDScan):
                 session_entry["status"] = "Off Duty"
                 break
 
+        if is_department_transfer:
+            # Auto time-in to the newly scanned department.
+            transfer_scan_event = {
+                "id": employee["id"],
+                "name": employee["name"],
+                "department": employee["department"],
+                "departments": assigned_departments,
+                "workArea": target_work_area,
+                "status": "On Duty",
+                "area": target_work_area,
+                "date": current_date,
+                "timeIn": current_time,
+                "timeOut": None,
+                "totalWorkHours": None,
+                "image": image_path,
+            }
+            all_rfid_scan_history.append(transfer_scan_event)
+            rfid_scan_history.append(transfer_scan_event.copy())
+            update_employee_status(employee["id"], "On Duty")
+            _save_history(all_rfid_scan_history)
+            _play_time_in_sound()
+            return {
+                "message": "Department transfer recorded",
+                "data": transfer_scan_event,
+                "previousData": existing_scan,
+            }
+
+        # Same department scan while On Duty => regular clock-out
+        update_employee_status(employee["id"], "Off Duty")
         _save_history(all_rfid_scan_history)
         _play_timeout_sound()
         return {"message": "Clock-out recorded", "data": existing_scan}

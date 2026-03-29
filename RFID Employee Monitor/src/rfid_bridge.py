@@ -119,18 +119,13 @@ while True:
                         payload = None
 
                     code = None
-                    expected_department = None
                     if isinstance(payload, dict) and isinstance(payload.get("detail"), dict):
                         code = payload["detail"].get("code")
-                        expected_department = payload["detail"].get("expectedDepartment")
 
                     if code == "UNREGISTERED_UID":
                         lcd_message = "LCD_MSG:UNREGISTERED"
-                    elif code == "WRONG_DEPARTMENT":
-                        if expected_department:
-                            lcd_message = f"LCD_MSG:GO TO {expected_department}"
-                        else:
-                            lcd_message = "LCD_MSG:WRONG DEPT"
+                    elif code == "UNAUTHORIZED_AREA":
+                        lcd_message = "LCD_MSG:Unauthorized Access"
                     else:
                         lcd_message = "LCD_MSG:ERROR"
 
