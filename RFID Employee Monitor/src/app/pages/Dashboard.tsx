@@ -209,20 +209,20 @@ export function Dashboard() {
             />
           </div>
         </div>
-        <div className="p-0">
-          <Table>
+        <div className="overflow-x-auto p-4">
+          <Table className="min-w-[1280px] table-fixed border-separate border-spacing-y-2">
             <TableHeader>
               <TableRow>
-                <TableHead>ID</TableHead>
-                <TableHead>Name</TableHead>
-                <TableHead>Department</TableHead>
-                <TableHead>Current Work Area</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead>Date</TableHead>
-                <TableHead>Time In</TableHead>
-                <TableHead>Time Out</TableHead>
-                <TableHead>Total Work Hours</TableHead>
-                <TableHead>Photo</TableHead>
+                <TableHead className="w-[90px] px-3 py-2 text-center align-middle text-xs font-semibold uppercase tracking-wide text-[#5A5FB8]">ID</TableHead>
+                <TableHead className="w-[120px] px-3 py-2 text-center align-middle text-xs font-semibold uppercase tracking-wide text-[#5A5FB8]">Name</TableHead>
+                <TableHead className="w-[230px] px-3 py-2 text-center align-middle text-xs font-semibold uppercase tracking-wide text-[#5A5FB8]">Department</TableHead>
+                <TableHead className="w-[170px] px-3 py-2 text-center align-middle text-xs font-semibold uppercase tracking-wide text-[#5A5FB8]">Current Work Area</TableHead>
+                <TableHead className="w-[110px] px-3 py-2 text-center align-middle text-xs font-semibold uppercase tracking-wide text-[#5A5FB8]">Status</TableHead>
+                <TableHead className="w-[120px] px-3 py-2 text-center align-middle text-xs font-semibold uppercase tracking-wide text-[#5A5FB8]">Date</TableHead>
+                <TableHead className="w-[110px] px-3 py-2 text-center align-middle text-xs font-semibold uppercase tracking-wide text-[#5A5FB8]">Time In</TableHead>
+                <TableHead className="w-[110px] px-3 py-2 text-center align-middle text-xs font-semibold uppercase tracking-wide text-[#5A5FB8]">Time Out</TableHead>
+                <TableHead className="w-[150px] px-3 py-2 text-center align-middle text-xs font-semibold uppercase tracking-wide text-[#5A5FB8]">Total Work Hours</TableHead>
+                <TableHead className="w-[95px] px-3 py-2 text-center align-middle text-xs font-semibold uppercase tracking-wide text-[#5A5FB8]">Photo</TableHead>
               </TableRow>
             </TableHeader>
 
@@ -235,48 +235,48 @@ export function Dashboard() {
                 </TableRow>
               ) : (
                 filteredLogs.map((log: any, index: number) => (
-                  <TableRow key={index}>
-                    <TableCell>{log.id ?? "—"}</TableCell>
-                    <TableCell>{log.name ?? "—"}</TableCell>
-                    <TableCell>
+                  <TableRow key={index} className="rounded-xl bg-white shadow-sm ring-1 ring-[#2E3192]/8">
+                    <TableCell className="px-3 py-3 text-center align-middle font-medium text-[#2E3192]">{log.id ?? "—"}</TableCell>
+                    <TableCell className="px-3 py-3 text-center align-middle">{log.name ?? "—"}</TableCell>
+                    <TableCell className="px-3 py-3 text-center align-middle">
                       {Array.isArray(log.departments) && log.departments.length > 0
                         ? log.departments.join(', ')
                         : log.department ?? "—"}
                     </TableCell>
-                    <TableCell>{log.workArea ?? log.area ?? "—"}</TableCell>
+                    <TableCell className="px-3 py-3 text-center align-middle">{log.workArea ?? log.area ?? "—"}</TableCell>
 
                     {/* Status comes directly from the log entry — always accurate */}
-                    <TableCell>{getStatusBadge(log.status)}</TableCell>
+                    <TableCell className="px-3 py-3 text-center align-middle">{getStatusBadge(log.status)}</TableCell>
 
-                    <TableCell>{log.date ?? "—"}</TableCell>
+                    <TableCell className="px-3 py-3 text-center align-middle">{log.date ?? "—"}</TableCell>
 
-                    <TableCell>
+                    <TableCell className="px-3 py-3 text-center align-middle">
                       <span className="text-green-700 font-medium">
                         {log.timeIn ?? "—"}
                       </span>
                     </TableCell>
 
-                    <TableCell>
+                    <TableCell className="px-3 py-3 text-center align-middle">
                       {log.timeOut
                         ? <span className="text-blue-700 font-medium">{log.timeOut}</span>
                         : <span className="text-gray-400 italic">Pending</span>
                       }
                     </TableCell>
 
-                    <TableCell>
+                    <TableCell className="px-3 py-3 text-center align-middle">
                       {log.totalWorkHours
                         ? <span className="font-medium text-[#2E3192]">{log.totalWorkHours}</span>
                         : <span className="text-gray-400 italic">In Progress</span>
                       }
                     </TableCell>
 
-                    <TableCell>
+                    <TableCell className="px-3 py-3 text-center align-middle">
                       {log.image
                         ? <img
                             src={`http://127.0.0.1:8000${log.image}`}
                             width="60"
                             alt="snapshot"
-                            className="rounded border"
+                            className="mx-auto rounded-lg border border-[#2E3192]/15 shadow-sm"
                           />
                         : <span className="text-gray-400 text-sm">No Image</span>
                       }
