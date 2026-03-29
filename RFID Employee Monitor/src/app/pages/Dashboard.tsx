@@ -214,7 +214,8 @@ export function Dashboard() {
               <TableRow>
                 <TableHead>ID</TableHead>
                 <TableHead>Name</TableHead>
-                <TableHead>Department</TableHead>
+                <TableHead>Home Dept.</TableHead>
+                <TableHead>Work Area</TableHead>
                 <TableHead>Status</TableHead>
                 <TableHead>Date</TableHead>
                 <TableHead>Time In</TableHead>
@@ -237,6 +238,7 @@ export function Dashboard() {
                     <TableCell>{log.id ?? "—"}</TableCell>
                     <TableCell>{log.name ?? "—"}</TableCell>
                     <TableCell>{log.department ?? "—"}</TableCell>
+                    <TableCell>{log.workArea ?? log.area ?? "—"}</TableCell>
 
                     {/* Status comes directly from the log entry — always accurate */}
                     <TableCell>{getStatusBadge(log.status)}</TableCell>

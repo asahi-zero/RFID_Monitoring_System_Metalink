@@ -3,8 +3,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
-from datetime import datetime
-from typing import Optional
+from datetime import datetime, timedelta, date as Date
+from typing import Optional, Callable
 from collections import defaultdict
 import ctypes
 import json
@@ -35,7 +35,9 @@ except ImportError:
 _BACKEND_DIR = os.path.dirname(os.path.abspath(__file__))
 _SOUNDS_DIR = os.path.normpath(os.path.join(_BACKEND_DIR, "..", "sounds"))
 TIME_IN_MP3 = os.path.join(_SOUNDS_DIR, "TimeIn.mp3")
+TIME_OUT_MP3 = os.path.join(_SOUNDS_DIR, "TimeOut.mp3")
 _MCI_TIMEIN_ALIAS = "rfid_timein"
+_MCI_TIMEOUT_ALIAS = "rfid_timeout"
 
 
 def _play_windows_alias(alias: str) -> None:
@@ -86,6 +88,41 @@ def _play_time_in_sound() -> None:
     _play_sound_thread(_run)
 
 
+def _play_timeout_sound() -> None:
+    """Clock-out: play sounds/TimeOut.mp3 (Windows: MCI/winmm). Else playsound if installed."""
+
+    def _run() -> None:
+        if not os.path.isfile(TIME_OUT_MP3):
+            _play_windows_alias("SystemAsterisk")
+            return
+        if sys.platform == "win32":
+            buf = ctypes.create_unicode_buffer(512)
+            mci = ctypes.windll.winmm.mciSendStringW
+            try:
+                mci(f"close {_MCI_TIMEOUT_ALIAS}", buf, 500, None)
+                path = os.path.abspath(TIME_OUT_MP3).replace("\\", "/")
+                if mci(f'open "{path}" type mpegvideo alias {_MCI_TIMEOUT_ALIAS}', buf, 500, None) != 0:
+                    print(f"Warning: could not open TimeOut.mp3 (MCI): {buf.value!r}")
+                    _play_windows_alias("SystemAsterisk")
+                    return
+                mci(f"play {_MCI_TIMEOUT_ALIAS} wait", buf, 500, None)
+            except Exception as e:
+                print(f"Warning: TimeOut.mp3 playback: {e}")
+                _play_windows_alias("SystemAsterisk")
+            finally:
+                mci(f"close {_MCI_TIMEOUT_ALIAS}", buf, 500, None)
+            return
+        if PLAYSOUND_AVAILABLE and _playsound_file is not None:
+            try:
+                _playsound_file(TIME_OUT_MP3, block=True)
+                return
+            except Exception as e:
+                print(f"Warning: playsound TimeOut.mp3: {e}")
+        _play_windows_alias("SystemAsterisk")
+
+    _play_sound_thread(_run)
+
+
 def _play_clock_out_sound() -> None:
     """Short system sound on clock-out (MP3 optional later)."""
 
@@ -95,7 +132,7 @@ def _play_clock_out_sound() -> None:
     _play_sound_thread(_run)
 
 
-from .employee_db import (
+from employee_db import (
     get_all_employees,
     get_employee_by_uid,
     get_employee_by_id,
@@ -161,9 +198,16 @@ if CAMERA_AVAILABLE:
 
     def grab_snapshot_frame():
         with camera_lock:
-            for _ in range(5):
-                camera.grab()
+            # Grab a couple of frames to reduce stale buffering and improve snapshot timeliness.
+            camera.grab()
             success, frame = camera.read()
+            if not success:
+                camera.grab()
+                success, frame = camera.read()
+                if not success:
+                    import time
+                    time.sleep(0.03)
+                    success, frame = camera.read()
         return success, frame if success else None
 
     def generate_frames():
@@ -303,15 +347,27 @@ def rfid_scan(scan: RFIDScan):
         )
 
     # -- Registered card — sounds play after we know clock-in vs clock-out --
+    # NOTE: We intentionally allow scanning in ANY area/department so employees can
+    # time-in/out across multiple departments in a single day.
 
     # ================= SNAPSHOT =================
     image_path = None
-    success_snap, frame = grab_snapshot_frame()
-    if CAMERA_AVAILABLE and success_snap and frame is not None:
-        filename = f"{employee['name']}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.jpg"
-        filepath = os.path.join(SNAPSHOT_DIR, filename)
-        cv2.imwrite(filepath, frame)
-        image_path = f"/snapshots/{filename}"
+    if CAMERA_AVAILABLE:
+        success_snap, frame = grab_snapshot_frame()
+        print(f"[RFID_SCAN] image capture success={success_snap}, frame_present={frame is not None}")
+        if success_snap and frame is not None:
+            try:
+                filename = f"{employee['name']}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.jpg"
+                filepath = os.path.join(SNAPSHOT_DIR, filename)
+                cv2.imwrite(filepath, frame)
+                image_path = f"/snapshots/{filename}"
+                print(f"[RFID_SCAN] snapshot saved: {image_path}")
+            except Exception as e:
+                print(f"Warning: Failed to save snapshot: {e}")
+        else:
+            print(f"Warning: Could not capture snapshot for UID {scan.rfidUid} at {datetime.now()}")
+    else:
+        print("Warning: CAMERA_AVAILABLE is False, cannot capture snapshot.")
 
     # ================= CLOCK IN / CLOCK OUT =================
     existing_scan = None
@@ -348,7 +404,7 @@ def rfid_scan(scan: RFIDScan):
                 break
 
         _save_history(all_rfid_scan_history)
-        _play_clock_out_sound()
+        _play_timeout_sound()
         return {"message": "Clock-out recorded", "data": existing_scan}
     else:
         # First scan = Clock In -> On Duty
@@ -356,6 +412,7 @@ def rfid_scan(scan: RFIDScan):
             "id":             employee["id"],
             "name":           employee["name"],
             "department":     employee["department"],
+            "workArea":       (scan.area or "").strip() or employee["department"],
             "status":         "On Duty",
             "area":           scan.area,
             "date":           current_date,
@@ -456,23 +513,53 @@ def daily_report(report_date: Optional[str] = None):
     # For reports, read from the full history file (not just today's in-memory list)
     full_history = _load_history()
 
-    seen: dict[str, dict] = {}
+    entries_by_emp: dict[str, list[dict]] = {}
     for entry in full_history:
-        if entry.get("date") == today:
-            seen[entry["id"]] = entry
+        if entry.get("date") != today:
+            continue
+        emp_id = entry.get("id")
+        if not emp_id:
+            continue
+        entries_by_emp.setdefault(emp_id, []).append(entry)
+
+    def _entry_sort_key(e: dict):
+        t_str = e.get("timeIn") or "00:00:00"
+        try:
+            t = datetime.strptime(t_str, "%H:%M:%S").time()
+        except Exception:
+            t = datetime.strptime("00:00:00", "%H:%M:%S").time()
+        return t
 
     details = []
     for emp in employees:
-        rec = seen.get(emp["id"])
+        emp_id = emp["id"]
+        emp_entries = entries_by_emp.get(emp_id, [])
+        emp_entries_sorted = sorted(emp_entries, key=_entry_sort_key) if emp_entries else []
+        earliest = emp_entries_sorted[0] if emp_entries_sorted else None
+        latest = emp_entries_sorted[-1] if emp_entries_sorted else None
+
+        total_minutes = 0
+        has_any_total = False
+        for e in emp_entries:
+            mins, has = _parse_total_work_minutes(e.get("totalWorkHours"))
+            if has:
+                total_minutes += mins
+                has_any_total = True
+        total_hours = _format_minutes_to_hours(total_minutes) if has_any_total else None
+
+        status = "Absent"
+        if latest is not None:
+            status = "On Duty" if latest.get("timeOut") is None else "Off Duty"
+
         details.append({
-            "id":          emp["id"],
-            "employee_id": emp["id"],
+            "id":          emp_id,
+            "employee_id": emp_id,
             "name":        emp["name"],
             "department":  emp["department"],
-            "time_in":     rec["timeIn"]         if rec else None,
-            "time_out":    rec["timeOut"]        if rec else None,
-            "total_hours": rec["totalWorkHours"] if rec else None,
-            "status":      rec["status"]         if rec else "Absent",
+            "time_in":     earliest.get("timeIn") if earliest else None,
+            "time_out":    latest.get("timeOut") if latest else None,
+            "total_hours": total_hours,
+            "status":      status,
         })
 
     present_count = sum(1 for d in details if d["status"] in ("On Duty", "Off Duty"))
@@ -498,6 +585,260 @@ def daily_report(report_date: Optional[str] = None):
         "attendance": attendance_chart,
         "areas":      dept_data,
     }
+
+
+def _parse_total_work_minutes(total_work_hours: str | None) -> tuple[int, bool]:
+    """
+    Convert strings like "2h 15m" into minutes.
+    Returns (minutes, has_value).
+    """
+    if total_work_hours is None:
+        return 0, False
+    s = str(total_work_hours).strip()
+    if not s:
+        return 0, False
+
+    hours = 0
+    minutes = 0
+    try:
+        if "h" in s:
+            h_str = s.split("h", 1)[0].strip()
+            hours = int(h_str) if h_str else 0
+    except Exception:
+        hours = 0
+
+    try:
+        if "m" in s:
+            if "h" in s:
+                after_h = s.split("h", 1)[1]
+                m_str = after_h.split("m", 1)[0].strip()
+            else:
+                m_str = s.split("m", 1)[0].strip()
+            minutes = int(m_str) if m_str else 0
+    except Exception:
+        minutes = 0
+
+    return hours * 60 + minutes, True
+
+
+def _format_minutes_to_hours(total_minutes: int) -> str:
+    hours, remainder = divmod(max(0, int(total_minutes)), 60)
+    minutes = remainder
+    return f"{hours}h {minutes}m"
+
+
+def _build_range_report(
+    *,
+    start_date: Date,
+    end_date: Date,
+    attendance_days: list[Date] | None,
+    attendance_bucket_label: Callable[..., str] | None,
+):
+    employees = get_all_employees()
+    full_history = _load_history()
+
+    filtered: list[dict] = []
+    for entry in full_history:
+        entry_date = entry.get("date")
+        if not entry_date:
+            continue
+        try:
+            d = datetime.strptime(entry_date, "%Y-%m-%d").date()
+        except Exception:
+            continue
+        if start_date <= d <= end_date:
+            filtered.append(entry)
+
+    entries_by_emp: dict[str, list[dict]] = {}
+    for e in filtered:
+        emp_id = e.get("id")
+        if not emp_id:
+            continue
+        entries_by_emp.setdefault(emp_id, []).append(e)
+
+    def _entry_sort_key(e: dict):
+        # Used only for ordering; if timeIn is missing, treat as minimal.
+        d = datetime.strptime(e["date"], "%Y-%m-%d").date() if e.get("date") else start_date
+        t_str = e.get("timeIn") or "00:00:00"
+        try:
+            t = datetime.strptime(t_str, "%H:%M:%S").time()
+        except Exception:
+            t = datetime.strptime("00:00:00", "%H:%M:%S").time()
+        return datetime.combine(d, t)
+
+    details = []
+    present_count = 0
+    for emp in employees:
+        emp_id = emp["id"]
+        emp_entries = entries_by_emp.get(emp_id, [])
+        if not emp_entries:
+            details.append({
+                "id": emp_id,
+                "employee_id": emp_id,
+                "name": emp.get("name"),
+                "department": emp.get("department"),
+                "time_in": None,
+                "time_out": None,
+                "total_hours": None,
+                "status": "Absent",
+            })
+            continue
+
+        # Sort entries to find earliest time-in and latest scan.
+        emp_entries_sorted = sorted(emp_entries, key=_entry_sort_key)
+        earliest = emp_entries_sorted[0]
+        latest = emp_entries_sorted[-1]
+
+        total_minutes = 0
+        has_any_total = False
+        for e in emp_entries:
+            mins, has = _parse_total_work_minutes(e.get("totalWorkHours"))
+            if has:
+                total_minutes += mins
+                has_any_total = True
+
+        total_hours = _format_minutes_to_hours(total_minutes) if has_any_total else None
+
+        latest_time_out = latest.get("timeOut")
+        status = "On Duty" if latest_time_out is None else "Off Duty"
+
+        details.append({
+            "id": emp_id,
+            "employee_id": emp_id,
+            "name": emp.get("name"),
+            "department": emp.get("department"),
+            "time_in": earliest.get("timeIn"),
+            "time_out": latest_time_out,
+            "total_hours": total_hours,
+            "status": status,
+        })
+        present_count += 1
+
+    absent_count = len(employees) - present_count
+
+    if attendance_days is None:
+        # Fallback attendance: one bucket for whole range.
+        label = attendance_bucket_label(start_date, end_date) if attendance_bucket_label else "Range"
+        attendance_chart = [{"day": label, "present": present_count, "absent": absent_count}]
+    else:
+        attendance_chart = []
+        for d in attendance_days:
+            ids_on_day = {
+                e.get("id")
+                for e in filtered
+                if e.get("date") == d.strftime("%Y-%m-%d")
+            }
+            present = len([emp for emp in employees if emp["id"] in ids_on_day])
+            absent = len(employees) - present
+            label = attendance_bucket_label(d) if attendance_bucket_label else d.strftime("%a")
+            attendance_chart.append({"day": label, "present": present, "absent": absent})
+
+    dept_counts: dict[str, int] = {}
+    for emp in employees:
+        dept_counts[emp["department"]] = dept_counts.get(emp["department"], 0) + 1
+    dept_data = [{"name": k, "hours": v} for k, v in dept_counts.items()]
+    if not dept_data:
+        dept_data = [{"name": "No Data", "hours": 1}]
+
+    return {
+        "date": f"{start_date.strftime('%Y-%m-%d')} to {end_date.strftime('%Y-%m-%d')}",
+        "startDate": start_date.strftime("%Y-%m-%d"),
+        "endDate": end_date.strftime("%Y-%m-%d"),
+        "total": len(employees),
+        "present": present_count,
+        "absent": absent_count,
+        "details": details,
+        "attendance": attendance_chart,
+        "areas": dept_data,
+    }
+
+
+@app.get("/api/reports/weekly")
+def weekly_report(report_date: Optional[str] = None):
+    base = report_date or datetime.now().strftime("%Y-%m-%d")
+    report_dt = datetime.strptime(base, "%Y-%m-%d").date()
+    week_start = report_dt - timedelta(days=report_dt.weekday())  # Monday
+    week_end = week_start + timedelta(days=6)  # Sunday
+
+    attendance_days = [week_start + timedelta(days=i) for i in range(7)]
+    report = _build_range_report(
+        start_date=week_start,
+        end_date=week_end,
+        attendance_days=attendance_days,
+        attendance_bucket_label=lambda d: d.strftime("%a"),
+    )
+    report["date"] = f"Week of {report_dt.strftime('%Y-%m-%d')}"
+    return report
+
+
+@app.get("/api/reports/monthly")
+def monthly_report(year: int, month: int):
+    start_date = Date(year, month, 1)
+    next_month_start = (start_date.replace(day=28) + timedelta(days=4)).replace(day=1)
+    end_date = next_month_start - timedelta(days=1)
+
+    # Weekly buckets within the month (helps keep chart readable).
+    buckets: list[tuple[Date, Date]] = []
+    cursor = start_date
+    while cursor <= end_date:
+        # Bucket starts on Monday.
+        bucket_start = cursor - timedelta(days=cursor.weekday())
+        if bucket_start < start_date:
+            bucket_start = start_date
+        bucket_end = min(bucket_start + timedelta(days=6), end_date)
+        buckets.append((bucket_start, bucket_end))
+        cursor = bucket_end + timedelta(days=1)
+
+    # Build a list of "representative days" to reuse the daily attendance builder,
+    # but label each bucket with "Wk N".
+    attendance_days: list[Date] = []
+    for i, (b_start, _b_end) in enumerate(buckets, start=1):
+        attendance_days.append(b_start)
+
+    def bucket_label(_d: Date) -> str:
+        # Map each representative day to "Week 1..N".
+        idx = next(
+            (i for i, (b_start, _b_end) in enumerate(buckets, start=1) if b_start == _d),
+            1,
+        )
+        return f"Week {idx}"
+
+    # We need present/absent per bucket; implement directly:
+    employees = get_all_employees()
+    full_history = _load_history()
+    filtered: list[dict] = []
+    for entry in full_history:
+        entry_date = entry.get("date")
+        if not entry_date:
+            continue
+        try:
+            d = datetime.strptime(entry_date, "%Y-%m-%d").date()
+        except Exception:
+            continue
+        if start_date <= d <= end_date:
+            filtered.append(entry)
+
+    attendance_chart = []
+    for i, (b_start, b_end) in enumerate(buckets, start=1):
+        ids_in_bucket = {
+            e.get("id")
+            for e in filtered
+            if e.get("date")
+            and b_start <= datetime.strptime(e.get("date"), "%Y-%m-%d").date() <= b_end
+        }
+        present = len([emp for emp in employees if emp["id"] in ids_in_bucket])
+        absent = len(employees) - present
+        attendance_chart.append({"day": f"Week {i}", "present": present, "absent": absent})
+
+    report = _build_range_report(
+        start_date=start_date,
+        end_date=end_date,
+        attendance_days=None,
+        attendance_bucket_label=lambda _s, _e: "Month",
+    )
+    report["attendance"] = attendance_chart
+    report["date"] = f"{year:04d}-{month:02d}"
+    return report
 
 
 # ================= ROOT =================

@@ -54,12 +54,33 @@ export function Reports() {
   const [exporting, setExporting] = useState(false);
   const [activeIndex, setActiveIndex] = useState(0);
 
+  const [reportType, setReportType] = useState<'daily' | 'weekly' | 'monthly'>('daily');
+  const [reportDate, setReportDate] = useState<string>(new Date().toISOString().split('T')[0]);
+
+  const [filterId, setFilterId] = useState('');
+  const [filterName, setFilterName] = useState('');
+  const [filterDepartment, setFilterDepartment] = useState('');
+  const [filterDate, setFilterDate] = useState('');
+
+  const reportTypeLabel = reportType === 'daily' ? 'Daily' : reportType === 'weekly' ? 'Weekly' : 'Monthly';
+
   // ================= FETCH REPORT =================
-  const fetchReport = async (dateStr?: string) => {
+  const fetchReport = async () => {
     setLoading(true);
     try {
-      const param = dateStr ? `?report_date=${dateStr}` : '';
-      const res   = await fetch(`${API}/reports/daily${param}`);
+      let url = '';
+      if (reportType === 'daily') {
+        url = `${API}/reports/daily?report_date=${encodeURIComponent(reportDate)}`;
+      } else if (reportType === 'weekly') {
+        url = `${API}/reports/weekly?report_date=${encodeURIComponent(reportDate)}`;
+      } else {
+        const [y, m] = reportDate.split('-');
+        url = `${API}/reports/monthly?year=${encodeURIComponent(y)}&month=${encodeURIComponent(
+          parseInt(m || '1', 10).toString()
+        )}`;
+      }
+
+      const res = await fetch(url);
       const data  = await res.json();
       setReport(data);
     } catch (err) {
@@ -71,9 +92,9 @@ export function Reports() {
 
   useEffect(() => {
     fetchReport();
-    const interval = setInterval(fetchReport, 10000);
+    const interval = setInterval(() => fetchReport(), 10000);
     return () => clearInterval(interval);
-  }, []);
+  }, [reportType, reportDate]);
 
   // ================= CHART DATA =================
   const attendanceData: any[] = report?.attendance?.length
@@ -85,6 +106,32 @@ export function Reports() {
         { day: 'Thu', present: 0, absent: 0 },
         { day: 'Fri', present: 0, absent: 0 },
       ];
+
+  const reportDetails = Array.isArray(report?.details) ? report.details : [];
+
+  const departmentOptions = Array.from(new Set(reportDetails.map((d: any) => (d.department || '').trim()).filter((x: string) => x))).sort();
+
+  const filteredDetails = reportDetails.filter((d: any) => {
+    const matchesId = !filterId || String(d.employee_id ?? d.id ?? '').toLowerCase().includes(filterId.toLowerCase());
+    const matchesName = !filterName || String(d.name ?? '').toLowerCase().includes(filterName.toLowerCase());
+    const matchesDepartment = !filterDepartment || String(d.department ?? '').toLowerCase() === filterDepartment.toLowerCase();
+
+    let matchesDate = true;
+    if (filterDate) {
+      const rowDateString = d.date || report?.date || '';
+      const rowDate = new Date(rowDateString.slice(0, 10));
+      const filterD = new Date(filterDate);
+      matchesDate = rowDate.toISOString().slice(0, 10) === filterD.toISOString().slice(0, 10);
+    }
+
+    return matchesId && matchesName && matchesDepartment && matchesDate;
+  });
+
+  const filteredSummary = {
+    total: filteredDetails.length,
+    present: filteredDetails.filter((d: any) => d.status === 'On Duty').length,
+    absent: filteredDetails.filter((d: any) => d.status === 'Absent').length,
+  };
 
   const deptData: any[] = report?.areas?.length
     ? report.areas
@@ -104,12 +151,14 @@ export function Reports() {
     const printContent = `
       <html>
         <head>
-          <title>Daily Report — ${report?.date || 'N/A'}</title>
+          <title>${reportTypeLabel} Report — ${report?.date || 'N/A'}</title>
           <style>
             body { font-family: Arial, sans-serif; padding: 32px; color: #1a1a1a; }
-            h1   { color: #2E3192; margin-bottom: 4px; }
-            h2   { color: #0099DD; margin-top: 28px; margin-bottom: 8px; font-size: 16px; }
-            .meta { color: #666; font-size: 13px; margin-bottom: 24px; }
+            h1   { color: #2E3192; margin-bottom: 8px; font-size: 30px; }
+            h2   { color: #0099DD; margin-top: 18px; margin-bottom: 10px; font-size: 22px; }
+            .report-meta { display: flex; flex-wrap: wrap; gap: 20px; margin-bottom: 18px; }
+            .report-meta span { font-size: 16px; font-weight: 700; color: #2E3192; }
+            .meta { color: #555; font-size: 14px; margin-bottom: 26px; }
             .stats { display: flex; gap: 24px; margin-bottom: 24px; flex-wrap: wrap; }
             .stat-card { border: 1px solid #ddd; border-radius: 8px; padding: 16px 24px; min-width: 120px; text-align: center; }
             .stat-card .value { font-size: 32px; font-weight: bold; color: #2E3192; }
@@ -123,7 +172,12 @@ export function Reports() {
         </head>
         <body>
           <h1>RFID Employee Monitor</h1>
-          <p class="meta">Daily Report &nbsp;|&nbsp; ${report?.date || new Date().toISOString().split('T')[0]} &nbsp;|&nbsp; Generated: ${new Date().toLocaleString()}</p>
+          <div class="report-meta">
+            <span>Report:</span><span>${reportTypeLabel}</span>
+            <span>Date:</span><span>${report?.date || new Date().toISOString().split('T')[0]}</span>
+            <span>Generated:</span><span>${new Date().toLocaleString()}</span>
+          </div>
+          <p class="meta">Attendance snapshot with filters applied</p>
           <div class="stats">
             <div class="stat-card"><div class="value">${report?.total ?? 0}</div><div class="label">Total Employees</div></div>
             <div class="stat-card" style="border-color:#10b981"><div class="value" style="color:#10b981">${report?.present ?? 0}</div><div class="label">Present</div></div>
@@ -138,7 +192,7 @@ export function Reports() {
               </tr>
             </thead>
             <tbody>
-              ${(report?.details || []).map((d: any) => `
+              ${(filteredDetails || []).map((d: any) => `
                 <tr>
                   <td>${d.employee_id}</td><td>${d.name}</td><td>${d.department}</td>
                   <td>${d.time_in || '—'}</td><td>${d.time_out || '—'}</td>
@@ -148,6 +202,13 @@ export function Reports() {
               ${(!report?.details?.length) ? '<tr><td colspan="7" style="text-align:center;color:#999">No records.</td></tr>' : ''}
             </tbody>
           </table>
+          <div style="margin-top: 36px;">
+            <div style="margin-top: 24px; width: 320px;">
+              <div style="border-bottom: 1px solid #2E3192; height: 2px; margin-bottom: 12px;"></div>
+              <div style="font-size: 13px; color: #333; margin-bottom: 4px;">Signature</div>
+              <div style="font-size: 13px; font-weight: 700; color: #2E3192;">Approved by Supervisor</div>
+            </div>
+          </div>
           <div class="footer">RFID Employee Monitor — Confidential</div>
         </body>
       </html>
@@ -165,17 +226,18 @@ export function Reports() {
     setExporting(true);
     try {
       const rows = [
-        ['RFID Employee Monitor — Daily Report'],
+        [`RFID Employee Monitor — ${reportTypeLabel} Report`],
         [`Date: ${report?.date || new Date().toISOString().split('T')[0]}`],
         [`Generated: ${new Date().toLocaleString()}`],
+        [`Approved by Supervisor: _____________________________`],
         [],
         ['Summary'],
         ['Total Employees', 'Present', 'Absent'],
-        [report?.total ?? 0, report?.present ?? 0, report?.absent ?? 0],
+        [filteredSummary.total, filteredSummary.present, filteredSummary.absent],
         [],
         ['Attendance Details'],
         ['Employee ID', 'Name', 'Department', 'Time In', 'Time Out', 'Total Hours', 'Status'],
-        ...(report?.details || []).map((d: any) => [
+        ...(filteredDetails || []).map((d: any) => [
           d.employee_id, d.name, d.department,
           d.time_in || '', d.time_out || '', d.total_hours ?? '', d.status,
         ]),
@@ -221,6 +283,91 @@ export function Reports() {
         )}
       </div>
 
+      {/* ---- REPORT CONTROLS ---- */}
+      <div className="mb-8 flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+        <div className="flex items-center gap-3">
+          <span className="text-sm font-semibold text-[#2E3192]">Report type</span>
+          <select
+            value={reportType}
+            onChange={(e) => setReportType(e.target.value as any)}
+            className="h-10 rounded-xl border border-[#2E3192]/20 bg-white px-3 text-sm font-semibold text-[#2E3192] shadow-sm"
+          >
+            <option value="daily">Daily</option>
+            <option value="weekly">Weekly</option>
+            <option value="monthly">Monthly</option>
+          </select>
+        </div>
+
+        <div className="flex items-center gap-3">
+          <span className="text-sm font-semibold text-[#2E3192]">Date</span>
+          <input
+            type="date"
+            value={reportDate}
+            onChange={(e) => setReportDate(e.target.value)}
+            className="h-10 rounded-xl border border-[#2E3192]/20 bg-white px-3 text-sm font-semibold text-[#2E3192] shadow-sm"
+          />
+        </div>
+      </div>
+
+      <div className="mb-8 rounded-2xl border border-[#2E3192]/10 bg-[#f7fbff] p-4">
+        <h3 className="mb-2 text-sm font-semibold text-[#2E3192]">Filter records</h3>
+        <div className="grid grid-cols-1 gap-3 md:grid-cols-4">
+          <div>
+            <label className="mb-1 block text-xs font-semibold text-[#5A5FB8]">ID</label>
+            <input
+              value={filterId}
+              onChange={(e) => setFilterId(e.target.value)}
+              placeholder="Employee ID"
+              className="h-10 w-full rounded-xl border border-[#2E3192]/20 bg-white px-3 text-sm"
+            />
+          </div>
+          <div>
+            <label className="mb-1 block text-xs font-semibold text-[#5A5FB8]">Name</label>
+            <input
+              value={filterName}
+              onChange={(e) => setFilterName(e.target.value)}
+              placeholder="Name"
+              className="h-10 w-full rounded-xl border border-[#2E3192]/20 bg-white px-3 text-sm"
+            />
+          </div>
+          <div>
+            <label className="mb-1 block text-xs font-semibold text-[#5A5FB8]">Department</label>
+            <select
+              value={filterDepartment}
+              onChange={(e) => setFilterDepartment(e.target.value)}
+              className="h-10 w-full rounded-xl border border-[#2E3192]/20 bg-white px-3 text-sm"
+            >
+              <option value="">All</option>
+              {departmentOptions.map((dep) => (
+                <option key={dep} value={dep}>{dep}</option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className="mb-1 block text-xs font-semibold text-[#5A5FB8]">Date</label>
+            <input
+              type="date"
+              value={filterDate}
+              onChange={(e) => setFilterDate(e.target.value)}
+              className="h-10 w-full rounded-xl border border-[#2E3192]/20 bg-white px-3 text-sm"
+            />
+          </div>
+        </div>
+        <div className="mt-2 text-right">
+          <button
+            className="rounded-xl bg-[#2E3192] px-4 py-2 text-xs font-semibold text-white hover:bg-[#252a6e]"
+            onClick={() => {
+              setFilterId('');
+              setFilterName('');
+              setFilterDepartment('');
+              setFilterDate('');
+            }}
+          >
+            Clear filters
+          </button>
+        </div>
+      </div>
+
       {/* ---- ACTION BUTTONS ---- */}
       <div className="mb-8 grid grid-cols-1 gap-4 md:grid-cols-3">
         <Button
@@ -251,11 +398,11 @@ export function Reports() {
         </Button>
       </div>
 
-      {/* ---- DAILY SUMMARY ---- */}
+      {/* ---- REPORT SUMMARY ---- */}
       <Card className="mb-6 overflow-hidden rounded-2xl border-[#2E3192]/10 shadow-sm">
         <div className="border-b border-[#2E3192]/8 bg-gradient-to-r from-[#fafbfd] to-[#f4f8fc] px-6 py-4">
-          <h2 className="text-lg font-semibold text-[#2E3192]">Daily summary</h2>
-          <p className="text-xs text-[#5A5FB8]">Headcount for the selected report day</p>
+          <h2 className="text-lg font-semibold text-[#2E3192]">{reportTypeLabel} summary</h2>
+          <p className="text-xs text-[#5A5FB8]">Headcount for the selected report range</p>
         </div>
         <div className="p-6">
         {loading ? (
@@ -274,7 +421,7 @@ export function Reports() {
             </div>
             <div className="rounded-2xl border border-emerald-500/20 bg-gradient-to-br from-emerald-50 to-white p-6 text-center shadow-sm">
               <p className="text-xs font-semibold uppercase tracking-wide text-emerald-800/80">
-                Present today
+                {reportTypeLabel} present
               </p>
               <p className="mt-2 text-4xl font-semibold tabular-nums text-emerald-600">
                 {report?.present ?? 0}
@@ -282,7 +429,7 @@ export function Reports() {
             </div>
             <div className="rounded-2xl border border-rose-500/20 bg-gradient-to-br from-rose-50 to-white p-6 text-center shadow-sm">
               <p className="text-xs font-semibold uppercase tracking-wide text-rose-800/80">
-                Absent today
+                {reportTypeLabel} absent
               </p>
               <p className="mt-2 text-4xl font-semibold tabular-nums text-rose-600">
                 {report?.absent ?? 0}
@@ -296,10 +443,10 @@ export function Reports() {
       {/* ---- CHARTS ---- */}
       <div className="mb-6 grid grid-cols-1 gap-6 lg:grid-cols-2">
 
-        {/* Bar Chart — Weekly Attendance */}
+        {/* Bar Chart — Attendance */}
         <Card className="overflow-hidden rounded-2xl border-[#2E3192]/10 shadow-sm">
           <div className="border-b border-[#2E3192]/8 bg-gradient-to-r from-[#fafbfd] to-[#f4f8fc] px-6 py-4">
-            <h2 className="text-lg font-semibold text-[#2E3192]">Weekly attendance</h2>
+            <h2 className="text-lg font-semibold text-[#2E3192]">{reportTypeLabel} attendance</h2>
             <p className="text-xs text-[#5A5FB8]">Present vs absent trend</p>
           </div>
           <div className="p-6">
@@ -322,10 +469,10 @@ export function Reports() {
           </div>
         </Card>
 
-        {/* Pie Chart — Department Activity Today */}
+        {/* Pie Chart — Department Activity */}
         <Card className="overflow-hidden rounded-2xl border-[#2E3192]/10 shadow-sm">
           <div className="border-b border-[#2E3192]/8 bg-gradient-to-r from-[#fafbfd] to-[#f4f8fc] px-6 py-4">
-            <h2 className="text-lg font-semibold text-[#2E3192]">Department activity today</h2>
+            <h2 className="text-lg font-semibold text-[#2E3192]">{reportTypeLabel} department activity</h2>
             <p className="text-xs text-[#5A5FB8]">Share by department</p>
           </div>
           <div className="p-6">
@@ -380,7 +527,7 @@ export function Reports() {
       {/* ---- ATTENDANCE DETAILS TABLE ---- */}
       <Card className="overflow-hidden rounded-2xl border-[#2E3192]/10 shadow-sm">
         <div className="border-b border-[#2E3192]/8 bg-gradient-to-r from-[#fafbfd] to-[#f4f8fc] px-6 py-4">
-          <h2 className="text-lg font-semibold text-[#2E3192]">Today&apos;s attendance log</h2>
+          <h2 className="text-lg font-semibold text-[#2E3192]">{reportTypeLabel}&apos;s attendance log</h2>
           <p className="text-xs text-[#5A5FB8]">Per-employee times and status</p>
         </div>
         <div className="p-6 pt-4">
@@ -390,7 +537,7 @@ export function Reports() {
           </div>
         ) : !report?.details?.length ? (
           <p className="py-6 text-sm text-[#5A5FB8]">
-            No attendance records yet for today.
+            No attendance records yet for the selected report.
           </p>
         ) : (
           <div className="overflow-x-auto rounded-xl border border-[#2E3192]/8">
@@ -421,8 +568,8 @@ export function Reports() {
                 </tr>
               </thead>
               <tbody>
-                {report.details.map((d: any) => (
-                  <tr key={d.id} className="border-b border-[#2E3192]/6 transition-colors hover:bg-[#f8fafc]">
+                {filteredDetails.map((d: any, index: number) => (
+                  <tr key={`${d.id || d.employee_id}-${index}`} className="border-b border-[#2E3192]/6 transition-colors hover:bg-[#f8fafc]">
                     <td className="px-3 py-2.5 font-medium text-[#334155]">{d.employee_id}</td>
                     <td className="px-3 py-2.5 text-[#334155]">{d.name}</td>
                     <td className="px-3 py-2.5 text-[#334155]">{d.department}</td>

@@ -49,27 +49,66 @@ export function Attendance() {
   // One row per employee. If they have a scan today, show it. Otherwise Absent.
   const today = new Date().toISOString().split('T')[0];
 
-  // Latest scan per employee for today
-  const latestScanByEmpId: Record<string, any> = {};
+  // Group scans per employee for today
+  const scansByEmpId: Record<string, any[]> = {};
   for (const entry of history) {
-    if (entry.date === today) {
-      latestScanByEmpId[entry.id] = entry;
-    }
+    if (entry?.date !== today) continue;
+    const empId = entry?.id;
+    if (!empId) continue;
+    (scansByEmpId[empId] ||= []).push(entry);
   }
+
+  const sortByTimeIn = (a: any, b: any) => String(a?.timeIn || '').localeCompare(String(b?.timeIn || ''));
+
+  const parseTotalMinutes = (s: any): number | null => {
+    if (s == null) return null;
+    const raw = String(s).trim();
+    if (!raw) return null;
+    const hMatch = raw.match(/(\d+)\s*h/i);
+    const mMatch = raw.match(/(\d+)\s*m/i);
+    const h = hMatch ? parseInt(hMatch[1], 10) : 0;
+    const m = mMatch ? parseInt(mMatch[1], 10) : 0;
+    if (!hMatch && !mMatch) return null;
+    return h * 60 + m;
+  };
+
+  const formatMinutes = (mins: number) => {
+    const total = Math.max(0, Math.floor(mins));
+    const h = Math.floor(total / 60);
+    const m = total % 60;
+    return `${h}h ${m}m`;
+  };
 
   const rowsAll = employees
     .filter(emp => selectedDepartment === 'all' || emp.department === selectedDepartment)
     .map(emp => {
-      const scan = latestScanByEmpId[emp.id];
+      const scans = (scansByEmpId[emp.id] || []).slice().sort(sortByTimeIn);
+      const earliest = scans[0];
+      const latest = scans[scans.length - 1];
+
+      let totalMinutes = 0;
+      let hasAnyTotal = false;
+      for (const s of scans) {
+        const mins = parseTotalMinutes(s?.totalWorkHours);
+        if (mins != null) {
+          totalMinutes += mins;
+          hasAnyTotal = true;
+        }
+      }
+
+      const status =
+        !latest ? 'Absent' : (latest?.timeOut == null ? 'On Duty' : 'Off Duty');
+
       return {
         employeeId:     emp.id,
         name:           emp.name,
         department:     emp.department,
-        date:           scan?.date    || today,
-        timeIn:         scan?.timeIn  || null,
-        timeOut:        scan?.timeOut || null,
-        totalWorkHours: scan?.totalWorkHours || null,
-        status:         scan?.status  || 'Absent',
+        workArea:       latest?.workArea || latest?.area || null,
+        date:           latest?.date    || today,
+        timeIn:         earliest?.timeIn  || null,
+        timeOut:        latest?.timeOut || null,
+        totalWorkHours: hasAnyTotal ? formatMinutes(totalMinutes) : null,
+        status,
       };
     });
 
@@ -228,6 +267,7 @@ export function Attendance() {
                 <TableHead>Employee ID</TableHead>
                 <TableHead>Name</TableHead>
                 <TableHead>Department</TableHead>
+                <TableHead>Work Area</TableHead>
                 <TableHead>Date</TableHead>
                 <TableHead>Time In</TableHead>
                 <TableHead>Time Out</TableHead>
@@ -254,6 +294,7 @@ export function Attendance() {
                     <TableCell className="font-medium">{row.employeeId}</TableCell>
                     <TableCell>{row.name}</TableCell>
                     <TableCell>{row.department}</TableCell>
+                    <TableCell>{row.workArea || '—'}</TableCell>
                     <TableCell>{row.date}</TableCell>
                     <TableCell>
                       {row.timeIn ? (

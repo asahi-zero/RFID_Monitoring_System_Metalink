@@ -9,13 +9,8 @@ SERIAL_PORT = "COM5"
 BAUD_RATE = 9600
 RETRY_SECONDS = 2
 
-# ✅ FIX: Use one of your actual department names here so that if you ever
-#    re-enable area-based access control it works out of the box.
-#    For now the backend ignores the area for access control, but it is
-#    still logged with each scan event.
-#
-#    Allowed values: "Cutting" | "Assembly" | "Warehouse"
-#    Change to whichever area/reader this bridge is physically connected to.
+# Fallback area if we can't parse the incoming serial line.
+# Allowed values: "Cutting" | "Assembly" | "Warehouse"
 SCAN_AREA = "Cutting"
 
 def print_available_ports():
@@ -45,6 +40,13 @@ def open_serial_with_retry():
 ser = open_serial_with_retry()
 print("🚀 RFID Bridge Started...")
 
+def send_lcd_message(message: str) -> None:
+    """Send a one-line command to the Arduino LCD via the same serial link."""
+    try:
+        ser.write((message.strip() + "\n").encode("utf-8"))
+    except Exception as e:
+        print(f"⚠ Failed to send LCD message: {e}")
+
 while True:
     try:
         line = ser.readline().decode(errors="ignore").strip()
@@ -53,28 +55,91 @@ while True:
         print("RAW:", line)
 
         if "UID:" in line:
-            uid = line.replace("UID:", "").strip()
+            # Arduino prints lines like: "<Area> UID: <UID>"
+            # Example: "Cutting UID: D7F13A25"
+            try:
+                before_uid, after_uid = line.split("UID:", 1)
+                parsed_area = before_uid.strip().replace("UID", "").strip()
+                uid = after_uid.strip()
+            except ValueError:
+                parsed_area = ""
+                uid = line.replace("UID:", "").strip()
 
-            # Clean UID (removes extra text like area or spaces)
+            # Clean UID (remove any extra trailing tokens/spaces)
             if " " in uid:
                 uid = uid.split()[-1]
 
+            # Normalize area to expected department names; fall back if unknown.
+            scan_area = parsed_area
+            if scan_area.lower().startswith("assem"):
+                scan_area = "Assembly"
+            elif scan_area.lower().startswith("cut"):
+                scan_area = "Cutting"
+            elif scan_area.lower().startswith("ware"):
+                scan_area = "Warehouse"
+            else:
+                scan_area = SCAN_AREA
+
             print("✅ Clean UID:", uid)
+            print("✅ Parsed Area:", scan_area)
 
             try:
                 res = requests.post(
                     "http://127.0.0.1:8000/api/rfid/scan",
                     json={
                         "rfidUid": uid,
-                        "area": SCAN_AREA
+                        "area": scan_area
                     }
                 )
 
                 print("📡 API Response:", res.status_code)
                 print("📨 Response Body:", res.text)
 
+                lcd_message = ""
+                if res.ok:
+                    try:
+                        payload = res.json()
+                    except Exception:
+                        payload = None
+
+                    name = None
+                    if isinstance(payload, dict):
+                        data = payload.get("data")
+                        if isinstance(data, dict):
+                            name = data.get("name")
+
+                    if name:
+                        lcd_message = f"LCD_NAME:{name}"
+                    else:
+                        lcd_message = "LCD_MSG:RECORDED"
+                else:
+                    try:
+                        payload = res.json()
+                    except Exception:
+                        payload = None
+
+                    code = None
+                    expected_department = None
+                    if isinstance(payload, dict) and isinstance(payload.get("detail"), dict):
+                        code = payload["detail"].get("code")
+                        expected_department = payload["detail"].get("expectedDepartment")
+
+                    if code == "UNREGISTERED_UID":
+                        lcd_message = "LCD_MSG:UNREGISTERED"
+                    elif code == "WRONG_DEPARTMENT":
+                        if expected_department:
+                            lcd_message = f"LCD_MSG:GO TO {expected_department}"
+                        else:
+                            lcd_message = "LCD_MSG:WRONG DEPT"
+                    else:
+                        lcd_message = "LCD_MSG:ERROR"
+
+                if lcd_message:
+                    send_lcd_message(lcd_message)
+
             except Exception as e:
                 print("❌ API not reachable:", e)
+                send_lcd_message("LCD_MSG:API ERR")
 
     except serial.SerialException as e:
         print(f"⚠ Serial disconnected: {e}")

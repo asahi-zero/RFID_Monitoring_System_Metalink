@@ -1,16 +1,16 @@
 [
   {
     "id": "EMP001",
-    "name": "Sanjo",
-    "department": "Assembly",
-    "status": "On Duty",
-    "rfidUid": "caac805"
+    "name": "James Rhyan Condens",
+    "department": "Cutting",
+    "status": "Off Duty",
+    "rfidUid": "877B2249"
   },
   {
     "id": "EMP002",
-    "name": "James",
-    "department": "Cutting",
-    "status": "On Duty",
-    "rfidUid": "8150bd97"
+    "name": "adwasdwa",
+    "department": "Warehouse",
+    "status": "Absent",
+    "rfidUid": "97E12149"
   }
 ]
